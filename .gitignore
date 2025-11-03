@@ -1,0 +1,90 @@
+# Laravel specific
+/vendor/
+/node_modules/
+/public/hot
+/public/storage
+/public/build
+/storage/*.key
+/.env
+/.env.backup
+/.env.production
+/.env.local
+/.env.testing
+/.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+auth.json
+npm-debug.log
+yarn-error.log
+/.fleet
+/.idea
+/.vscode
+
+# Laravel storage and cache
+/storage/app/*
+!/storage/app/public
+/storage/framework/cache/*
+!/storage/framework/cache/data
+/storage/framework/sessions/*
+!/storage/framework/sessions/.gitignore
+/storage/framework/testing/*
+/storage/framework/views/*
+/storage/logs/*
+!/storage/logs/.gitignore
+
+# Bootstrap
+/bootstrap/cache/*
+!/bootstrap/cache/.gitignore
+
+# Tests
+/phpunit.xml
+/.phpunit.result.cache
+/tests/.phpunit.result.cache
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build files
+/public/build
+/public/hot
+/public/mix-manifest.json
+
+# Deployment
+deploy-helper.sh
+
+# Test files with credentials
+test-*.php
+!/test-unit.php
+
+# Documentation archives
+*.zip
+*.tar.gz
+
+# Logs
+*.log
+/storage/logs/*
+!/storage/logs/.gitignore
+
+# Backups
+*.backup
+*.bak
+*.tmp
+
+# Cache
+.cache/
+cache/
+*.cache
+
+# Local environment files
+.env.local
+.env.*.local
+
+# Laravel Pint
+.phpunit.result.cache
+.phpunit.cache
+

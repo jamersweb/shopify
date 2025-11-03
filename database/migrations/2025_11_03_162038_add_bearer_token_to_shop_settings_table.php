@@ -1,0 +1,28 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('shop_settings', function (Blueprint $table) {
+            $table->text('ecofreight_bearer_token')->nullable()->after('ecofreight_password'); // encrypted
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('shop_settings', function (Blueprint $table) {
+            $table->dropColumn('ecofreight_bearer_token');
+        });
+    }
+};

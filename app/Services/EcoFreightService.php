@@ -166,31 +166,71 @@ class EcoFreightService
     {
         try {
             // Get bearer token - try shop settings first, then fallback to production token from config
-            $bearerToken = $this->settings->ecofreight_bearer_token ?? config('ecofreight.production_token');
+            $bearerToken = null;
+            
+            if ($this->settings) {
+                $bearerToken = $this->settings->ecofreight_bearer_token;
+            }
+            
+            // Fallback to production token from config
+            if (!$bearerToken) {
+                $bearerToken = config('ecofreight.production_token');
+            }
+            
+            // Log token status (without exposing the actual token)
+            Log::info('EcoFreight createShipment - Token check', [
+                'has_settings' => $this->settings ? 'yes' : 'no',
+                'has_token_in_settings' => ($this->settings && $this->settings->ecofreight_bearer_token) ? 'yes' : 'no',
+                'has_production_token' => config('ecofreight.production_token') ? 'yes' : 'no',
+                'token_length' => $bearerToken ? strlen($bearerToken) : 0,
+            ]);
             
             if (!$bearerToken) {
                 Log::error('EcoFreight bearer token not found, attempting to retrieve');
                 
                 // Try to get token by calling testConnection
-                $connectionResult = $this->testConnection();
-                if (!$connectionResult['success']) {
+                if ($this->settings) {
+                    $connectionResult = $this->testConnection();
+                    if (!$connectionResult['success']) {
+                        return [
+                            'success' => false,
+                            'message' => 'Bearer token not available. Please test connection first or set production token.',
+                            'data' => null,
+                        ];
+                    }
+                    $bearerToken = $this->settings->ecofreight_bearer_token ?? config('ecofreight.production_token');
+                } else {
                     return [
                         'success' => false,
-                        'message' => 'Bearer token not available. Please test connection first or set production token.',
+                        'message' => 'Bearer token not available. Settings not provided and production token not configured.',
                         'data' => null,
                     ];
                 }
-                $bearerToken = $this->settings->ecofreight_bearer_token ?? config('ecofreight.production_token');
+            }
+            
+            if (!$bearerToken) {
+                return [
+                    'success' => false,
+                    'message' => 'Bearer token is required but not found. Please test connection or set production token.',
+                    'data' => null,
+                ];
             }
             
             // Ensure shipmentData is wrapped in an array (API expects array of orders)
             $payload = is_array($shipmentData) && isset($shipmentData[0]) ? $shipmentData : [$shipmentData];
             
+            // Format Authorization header - add Bearer prefix if not present
+            $authHeader = $bearerToken;
+            // If token doesn't start with "Bearer ", add it
+            if (strpos($bearerToken, 'Bearer ') !== 0) {
+                $authHeader = 'Bearer ' . $bearerToken;
+            }
+            
             // Use the new v2 API endpoint
             $response = $this->client->post('/v2/api/client/order', [
                 'json' => $payload,
                 'headers' => [
-                    'Authorization' => $bearerToken, // Token without 'Bearer ' prefix as per user's example
+                    'Authorization' => $authHeader,
                 ],
             ]);
 

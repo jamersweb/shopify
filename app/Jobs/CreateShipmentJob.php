@@ -83,20 +83,46 @@ class CreateShipmentJob implements ShouldQueue
                 return;
             }
 
-            // Get order data from Shopify
-            $orderData = $this->getOrderData($shop, $shipment->shopify_order_id);
+            // Use updated shipment_data if available, otherwise fetch from Shopify
+            $orderData = null;
             
-            if (!$orderData) {
-                $shipment->update([
-                    'status' => 'error',
-                    'error_message' => 'Failed to retrieve order data from Shopify',
+            if ($shipment->shipment_data && isset($shipment->shipment_data['line_items'])) {
+                // Use existing shipment_data (may contain user edits)
+                $orderData = $shipment->shipment_data;
+                Log::info('CreateShipmentJob: Using existing shipment_data', [
+                    'shipment_id' => $shipment->id,
+                    'has_line_items' => isset($orderData['line_items']),
+                    'line_items_count' => count($orderData['line_items'] ?? []),
                 ]);
-                return;
+            } else {
+                // Fetch fresh data from Shopify
+                $orderData = $this->getOrderData($shop, $shipment->shopify_order_id);
+                
+                if (!$orderData) {
+                    $shipment->update([
+                        'status' => 'error',
+                        'error_message' => 'Failed to retrieve order data from Shopify',
+                    ]);
+                    return;
+                }
+                
+                // Store in shipment_data for future use
+                $shipment->update(['shipment_data' => $orderData]);
             }
             
-            // Preserve original order data in shipment_data if not already set
-            if (!$shipment->shipment_data || !isset($shipment->shipment_data['customer'])) {
-                $shipment->update(['shipment_data' => $orderData]);
+            // Ensure we have the latest shipment_data (in case it was updated after job was queued)
+            $shipment->refresh();
+            if ($shipment->shipment_data && isset($shipment->shipment_data['line_items'])) {
+                // Merge updated shipment_data with orderData, prioritizing shipment_data
+                $orderData = array_merge($orderData, $shipment->shipment_data);
+                // Specifically update line_items from shipment_data if they exist
+                if (isset($shipment->shipment_data['line_items'])) {
+                    $orderData['line_items'] = $shipment->shipment_data['line_items'];
+                }
+                Log::info('CreateShipmentJob: Merged updated shipment_data', [
+                    'shipment_id' => $shipment->id,
+                    'line_items_count' => count($orderData['line_items'] ?? []),
+                ]);
             }
 
             // Build shipment payload

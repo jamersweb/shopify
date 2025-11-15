@@ -443,6 +443,57 @@ class EcoFreightService
     }
 
     /**
+     * Normalize country name to full format expected by EcoFreight API.
+     */
+    protected function normalizeCountryName(?string $country): string
+    {
+        // Country name mapping - convert abbreviations and variations to full names
+        $countryMap = [
+            'UAE' => 'United Arab Emirates',
+            'U.A.E' => 'United Arab Emirates',
+            'U.A.E.' => 'United Arab Emirates',
+            'United Arab Emirates' => 'United Arab Emirates',
+            'AE' => 'United Arab Emirates',
+            'ARE' => 'United Arab Emirates',
+            // Add more mappings as needed
+        ];
+        
+        // Handle null or empty
+        if (empty($country)) {
+            Log::warning('EcoFreight: Empty country name, defaulting to United Arab Emirates');
+            return 'United Arab Emirates';
+        }
+        
+        $country = trim($country);
+        $countryUpper = strtoupper($country);
+        
+        // Check if we have a mapping
+        if (isset($countryMap[$countryUpper])) {
+            $normalized = $countryMap[$countryUpper];
+            if ($normalized !== $country) {
+                Log::info('EcoFreight: Country name normalized', [
+                    'original' => $country,
+                    'normalized' => $normalized,
+                ]);
+            }
+            return $normalized;
+        }
+        
+        // If it's already a known full name, return as is
+        if (in_array($country, $countryMap)) {
+            return $country;
+        }
+        
+        // Log if we're using an unmapped country name
+        Log::info('EcoFreight: Using unmapped country name', [
+            'country' => $country,
+        ]);
+        
+        // Return the country as-is if no mapping found (might be valid)
+        return $country;
+    }
+
+    /**
      * Build shipment payload from order data and settings.
      */
     public function buildShipmentPayload(array $orderData, ShopSetting $settings): array
@@ -459,15 +510,45 @@ class EcoFreightService
         $totalQuantity = 0;
         $itemDescriptions = [];
         
-        foreach ($orderData['line_items'] as $item) {
-            // Get weight from item, fallback to default weight if missing or zero
-            $itemWeightGrams = $item['grams'] ?? ($item['weight'] ?? null);
-            $itemWeightKg = $itemWeightGrams ? ($itemWeightGrams / 1000) : null;
+        foreach ($orderData['line_items'] as $index => $item) {
+            // Get weight from item - check both 'weight' (kg) and 'grams'
+            // Priority: 'weight' (kg) if set, then 'grams', then default
+            $itemWeightKg = null;
+            $weightSource = 'none';
+            
+            // First check if 'weight' (in kg) is explicitly set
+            if (isset($item['weight']) && $item['weight'] !== null) {
+                $itemWeightKg = floatval($item['weight']);
+                $weightSource = 'weight_key';
+            } elseif (isset($item['grams']) && $item['grams'] !== null) {
+                // Convert grams to kg
+                $itemWeightKg = floatval($item['grams']) / 1000;
+                $weightSource = 'grams_key';
+            }
             
             // If weight is missing, zero, or invalid, use default weight
-            if (!$itemWeightKg || $itemWeightKg <= 0) {
+            // But only if weight wasn't explicitly set by user (check if 'weight' key exists)
+            if ($itemWeightKg === null || ($itemWeightKg <= 0 && !isset($item['weight']))) {
                 $itemWeightKg = $settings->default_weight ?? 0.4; // Use default weight (400g)
+                $weightSource = 'default';
             }
+            
+            // Ensure minimum weight of 0.01 kg (10g) if weight was set but is too low
+            if ($itemWeightKg > 0 && $itemWeightKg < 0.01) {
+                $itemWeightKg = 0.01;
+            }
+            
+            // Log weight calculation for debugging
+            Log::debug('EcoFreight buildShipmentPayload - Item weight calculation', [
+                'item_index' => $index,
+                'item_title' => $item['title'] ?? 'N/A',
+                'weight_kg' => $itemWeightKg,
+                'weight_source' => $weightSource,
+                'has_weight_key' => isset($item['weight']),
+                'weight_value' => $item['weight'] ?? null,
+                'has_grams_key' => isset($item['grams']),
+                'grams_value' => $item['grams'] ?? null,
+            ]);
             
             $quantity = $item['quantity'] ?? 1;
             $totalWeight += $itemWeightKg * $quantity;
@@ -588,7 +669,7 @@ class EcoFreightService
                 'sender_name' => $shipFrom->ship_from_contact ?? '',
                 'address' => $shipFrom->ship_from_address1 ?? '',
                 'city' => $shipFrom->ship_from_city ?? '',
-                'country' => $shipFrom->ship_from_country ?? 'United Arab Emirates',
+                'country' => $this->normalizeCountryName($shipFrom->ship_from_country ?? 'United Arab Emirates'),
                 'email' => $shipFrom->ship_from_email ?? '',
                 'mobile_no' => $shipFrom->ship_from_phone ?? '',
                 'alt_mobile_no' => '',
@@ -599,7 +680,7 @@ class EcoFreightService
                 'email' => $shipTo['email'] ?? '',
                 'address' => $shipTo['address1'] ?? '',
                 'city' => $shipTo['city'] ?? '',
-                'country' => $shipTo['country'] ?? 'United Arab Emirates',
+                'country' => $this->normalizeCountryName($shipTo['country'] ?? 'United Arab Emirates'),
                 'mobile_no' => $shipTo['phone'] ?? '',
                 'alt_mobile_no' => $shipTo['phone2'] ?? '',
             ],
@@ -631,6 +712,15 @@ class EcoFreightService
             $payload['consignee_details']['address'] .= ', ' . $shipTo['address2'];
         }
 
+        // Validate and log country names before validation
+        $shipperCountry = $payload['shipper_details']['country'] ?? '';
+        $consigneeCountry = $payload['consignee_details']['country'] ?? '';
+        
+        Log::info('EcoFreight buildShipmentPayload - Country names', [
+            'shipper_country' => $shipperCountry,
+            'consignee_country' => $consigneeCountry,
+        ]);
+        
         // Validate payload before returning
         $this->validatePayload($payload);
 

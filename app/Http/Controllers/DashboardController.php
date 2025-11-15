@@ -392,6 +392,79 @@ class DashboardController extends Controller
                 $updateData['cod_amount'] = floatval($request->input('cod_amount'));
             }
             
+            // Update package information (line items)
+            if ($request->has('line_items') && is_array($request->input('line_items'))) {
+                $lineItems = $orderData['line_items'] ?? [];
+                $updatedLineItems = [];
+                
+                foreach ($request->input('line_items') as $index => $itemData) {
+                    // Find the corresponding line item by id or index
+                    $lineItem = null;
+                    if (isset($itemData['id'])) {
+                        foreach ($lineItems as $item) {
+                            if (($item['id'] ?? null) == $itemData['id']) {
+                                $lineItem = $item;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // If not found by id, use index
+                    if (!$lineItem && isset($lineItems[$index])) {
+                        $lineItem = $lineItems[$index];
+                    }
+                    
+                    // If still not found, create a new item structure
+                    if (!$lineItem) {
+                        $lineItem = [
+                            'id' => $itemData['id'] ?? null,
+                            'variant_id' => $itemData['variant_id'] ?? null,
+                            'title' => $itemData['title'] ?? 'Unknown Item',
+                            'sku' => $itemData['sku'] ?? '',
+                            'quantity' => 1,
+                            'grams' => 400,
+                            'dimensions' => ['length' => 10, 'width' => 10, 'height' => 10],
+                        ];
+                    }
+                    
+                    // Update quantity
+                    if (isset($itemData['quantity'])) {
+                        $lineItem['quantity'] = intval($itemData['quantity']);
+                    }
+                    
+                    // Update weight (convert kg to grams)
+                    if (isset($itemData['weight_kg'])) {
+                        $weightKg = floatval($itemData['weight_kg']);
+                        if ($weightKg > 0) {
+                            $lineItem['grams'] = round($weightKg * 1000, 2);
+                            // Also store weight in kg for easier access
+                            $lineItem['weight'] = $weightKg;
+                        }
+                    }
+                    
+                    // Update dimensions
+                    if (!isset($lineItem['dimensions'])) {
+                        $lineItem['dimensions'] = [];
+                    }
+                    
+                    if (isset($itemData['length'])) {
+                        $lineItem['dimensions']['length'] = floatval($itemData['length']);
+                    }
+                    if (isset($itemData['width'])) {
+                        $lineItem['dimensions']['width'] = floatval($itemData['width']);
+                    }
+                    if (isset($itemData['height'])) {
+                        $lineItem['dimensions']['height'] = floatval($itemData['height']);
+                    }
+                    
+                    $updatedLineItems[] = $lineItem;
+                }
+                
+                // Update order data with modified line items
+                $orderData['line_items'] = $updatedLineItems;
+                $updateData['shipment_data'] = $orderData;
+            }
+            
             $shipment->update($updateData);
             
             \Log::info('Shipment updated', [

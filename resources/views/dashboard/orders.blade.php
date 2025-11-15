@@ -171,7 +171,7 @@
                                                 <i class="fas fa-paper-plane"></i>
                                             </button>
                                         @endif
-                                        @if($shipment->status === 'error')
+                                        @if($shipment->status === 'error' || ($shipment->status === 'pending' && $shipment->error_message))
                                             <button onclick="retryShipment({{ $shipment->id }}, this)" 
                                                     class="text-yellow-600 hover:text-yellow-700"
                                                     title="Retry">
@@ -623,6 +623,73 @@
                                            class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm">
                                 </div>
                             </div>
+                        </div>
+                        
+                        <!-- Package Information -->
+                        <div class="border-b pb-4">
+                            <h4 class="text-md font-semibold text-gray-700 mb-3">
+                                <i class="fas fa-cube text-primary mr-2"></i>
+                                Package Information
+                            </h4>
+                            <div id="packageItemsContainer" class="space-y-4">
+                                ${(orderData.line_items || []).map((item, index) => {
+                                    const weightKg = item.grams ? (item.grams / 1000).toFixed(2) : '0.40';
+                                    const dimensions = item.dimensions || {};
+                                    const length = dimensions.length || 10;
+                                    const width = dimensions.width || 10;
+                                    const height = dimensions.height || 10;
+                                    return `
+                                        <div class="border rounded-lg p-4 bg-gray-50">
+                                            <div class="flex justify-between items-center mb-3">
+                                                <h5 class="font-medium text-gray-900">${item.title || 'Item ' + (index + 1)}</h5>
+                                                <span class="text-xs text-gray-500">SKU: ${item.sku || 'N/A'}</span>
+                                            </div>
+                                            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                                <div>
+                                                    <label class="block text-xs font-medium text-gray-700 mb-1">Quantity</label>
+                                                    <input type="number" min="1" 
+                                                           name="line_items[${index}][quantity]" 
+                                                           value="${item.quantity || 1}"
+                                                           class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs font-medium text-gray-700 mb-1">Weight (kg)</label>
+                                                    <input type="number" step="0.01" min="0.01" 
+                                                           name="line_items[${index}][weight_kg]" 
+                                                           value="${weightKg}"
+                                                           class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs font-medium text-gray-700 mb-1">Length (cm)</label>
+                                                    <input type="number" step="0.1" min="1" 
+                                                           name="line_items[${index}][length]" 
+                                                           value="${length}"
+                                                           class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs font-medium text-gray-700 mb-1">Width (cm)</label>
+                                                    <input type="number" step="0.1" min="1" 
+                                                           name="line_items[${index}][width]" 
+                                                           value="${width}"
+                                                           class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs font-medium text-gray-700 mb-1">Height (cm)</label>
+                                                    <input type="number" step="0.1" min="1" 
+                                                           name="line_items[${index}][height]" 
+                                                           value="${height}"
+                                                           class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm">
+                                                </div>
+                                            </div>
+                                            <input type="hidden" name="line_items[${index}][id]" value="${item.id || ''}">
+                                            <input type="hidden" name="line_items[${index}][variant_id]" value="${item.variant_id || ''}">
+                                            <input type="hidden" name="line_items[${index}][title]" value="${item.title || ''}">
+                                            <input type="hidden" name="line_items[${index}][sku]" value="${item.sku || ''}">
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                            ${(!orderData.line_items || orderData.line_items.length === 0) ? '<p class="text-sm text-gray-500 italic">No items found in this order.</p>' : ''}
                         </div>
                         
                         <!-- Package & COD -->

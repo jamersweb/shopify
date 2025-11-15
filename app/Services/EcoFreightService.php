@@ -420,9 +420,17 @@ class EcoFreightService
         $itemDescriptions = [];
         
         foreach ($orderData['line_items'] as $item) {
-            $weight = ($item['grams'] ?? ($item['weight'] ?? $settings->default_weight * 1000)) / 1000; // Convert to kg
+            // Get weight from item, fallback to default weight if missing or zero
+            $itemWeightGrams = $item['grams'] ?? ($item['weight'] ?? null);
+            $itemWeightKg = $itemWeightGrams ? ($itemWeightGrams / 1000) : null;
+            
+            // If weight is missing, zero, or invalid, use default weight
+            if (!$itemWeightKg || $itemWeightKg <= 0) {
+                $itemWeightKg = $settings->default_weight ?? 0.4; // Use default weight (400g)
+            }
+            
             $quantity = $item['quantity'] ?? 1;
-            $totalWeight += $weight * $quantity;
+            $totalWeight += $itemWeightKg * $quantity;
             $totalQuantity += $quantity;
             $itemDescriptions[] = $item['title'];
             
@@ -454,10 +462,18 @@ class EcoFreightService
             $width = $item['dimensions']['width'] ?? ($settings->default_dimensions['width'] ?? 10);
             $height = $item['dimensions']['height'] ?? ($settings->default_dimensions['height'] ?? 10);
             
+            // Calculate package weight (ensure it's at least default weight per item)
+            $packageWeight = $itemWeightKg * $quantity;
+            // Ensure minimum weight per package (at least default weight)
+            $minPackageWeight = ($settings->default_weight ?? 0.4) * $quantity;
+            if ($packageWeight < $minPackageWeight) {
+                $packageWeight = $minPackageWeight;
+            }
+            
             $packageDetails[] = [
                 'description' => $item['title'],
                 'quantity' => (string)$quantity,
-                'weight' => (string)round($weight * $quantity, 2),
+                'weight' => (string)round($packageWeight, 2),
                 'height' => (string)$height,
                 'width' => (string)$width,
                 'length' => (string)$length,
@@ -466,16 +482,37 @@ class EcoFreightService
             ];
         }
         
+        // Ensure all packages have valid weight (fix any that are 0 or too low)
+        foreach ($packageDetails as &$package) {
+            $packageWeight = floatval($package['weight']);
+            $minWeight = $settings->default_weight ?? 0.4;
+            
+            // If weight is 0 or too low, use default weight per item
+            if ($packageWeight <= 0) {
+                $quantity = intval($package['quantity'] ?? 1);
+                $package['weight'] = (string)round($minWeight * $quantity, 2);
+            } elseif ($packageWeight < 0.01) {
+                // Ensure minimum 0.01 kg (10g)
+                $package['weight'] = '0.01';
+            }
+        }
+        unset($package); // Break reference
+        
         // If no line items, create a default package
         if (empty($packageDetails)) {
             $itemDescription = implode(', ', $itemDescriptions) ?: 'General Goods';
             $defaultWeight = $settings->default_weight ?? 0.4;
             $defaultDimensions = $settings->default_dimensions ?? ['length' => 10, 'width' => 10, 'height' => 10];
             
+            // Ensure minimum weight
+            if ($defaultWeight <= 0) {
+                $defaultWeight = 0.4; // 400g minimum
+            }
+            
             $packageDetails[] = [
                 'description' => $itemDescription,
                 'quantity' => '1',
-                'weight' => (string)$defaultWeight,
+                'weight' => (string)round($defaultWeight, 2),
                 'height' => (string)$defaultDimensions['height'],
                 'width' => (string)$defaultDimensions['width'],
                 'length' => (string)$defaultDimensions['length'],
@@ -602,8 +639,14 @@ class EcoFreightService
             if (empty($package['quantity']) || !is_numeric($package['quantity']) || $package['quantity'] <= 0) {
                 throw new \InvalidArgumentException("Package {$index}: quantity must be a valid number > 0");
             }
-            if (empty($package['weight']) || !is_numeric($package['weight']) || $package['weight'] <= 0) {
-                throw new \InvalidArgumentException("Package {$index}: weight must be a valid number > 0");
+            if (empty($package['weight']) || !is_numeric($package['weight']) || floatval($package['weight']) <= 0) {
+                throw new \InvalidArgumentException("Package {$index}: weight must be a valid number > 0. Current value: " . ($package['weight'] ?? 'empty'));
+            }
+            
+            // Ensure weight is at least 0.01 kg (10g minimum)
+            $packageWeight = floatval($package['weight']);
+            if ($packageWeight < 0.01) {
+                $package['weight'] = '0.01'; // Set minimum weight
             }
         }
     }

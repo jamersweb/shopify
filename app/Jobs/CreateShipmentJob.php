@@ -41,16 +41,34 @@ class CreateShipmentJob implements ShouldQueue
     {
         $startTime = microtime(true);
         
+        // Log job start
+        Log::info('CreateShipmentJob started', [
+            'request_id' => $this->requestId,
+            'shop_id' => $this->shopId,
+            'shipment_id' => $this->shipmentId,
+        ]);
+        
         try {
             $shop = Shop::find($this->shopId);
             $shipment = Shipment::find($this->shipmentId);
 
             if (!$shop || !$shipment || !$shop->settings) {
-                Log::error('CreateShipmentJob: Shop, shipment, or settings not found', [
+                $errorMsg = 'Shop, shipment, or settings not found';
+                Log::error('CreateShipmentJob: ' . $errorMsg, [
                     'request_id' => $this->requestId,
                     'shop_id' => $this->shopId,
                     'shipment_id' => $this->shipmentId,
+                    'shop_exists' => $shop ? 'yes' : 'no',
+                    'shipment_exists' => $shipment ? 'yes' : 'no',
+                    'settings_exists' => ($shop && $shop->settings) ? 'yes' : 'no',
                 ]);
+                
+                if ($shipment) {
+                    $shipment->update([
+                        'status' => 'error',
+                        'error_message' => $errorMsg,
+                    ]);
+                }
                 return;
             }
 

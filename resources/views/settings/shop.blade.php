@@ -352,13 +352,14 @@
             }, 5000);
         })
         .catch(error => {
+            console.error('Test connection error:', error);
             notification.className = 'fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-md bg-red-50 border border-red-200';
             notification.innerHTML = `
                 <div class="flex items-center">
                     <i class="fas fa-exclamation-circle text-red-500 text-xl mr-3"></i>
                     <div>
                         <p class="font-semibold text-red-800">Error</p>
-                        <p class="text-sm text-red-600">${error.message || 'An unexpected error occurred. Please try again.'}</p>
+                        <p class="text-sm text-red-600">${error.message || 'An unexpected error occurred. Please check the console for details.'}</p>
                     </div>
                 </div>
             `;

@@ -118,64 +118,65 @@ class SettingsController extends Controller
      */
     public function testConnection(Request $request, $shopId)
     {
-        $user = Auth::user();
-        $shop = $user->shops()->findOrFail($shopId);
-        
-        // Get credentials from request or use saved settings
-        $username = $request->input('username');
-        $password = $request->input('password');
-        $baseUrl = $request->input('base_url');
-        
-        // If no credentials provided, check if settings exist
-        if (!$username || !$password) {
-            if (!$shop->settings) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Please enter credentials or configure settings first'
-                ]);
-            }
-        } else {
-            // Temporarily update settings for testing if credentials provided
-            if (!$shop->settings) {
-                $shop->settings = $shop->settings()->create([]);
+        try {
+            $user = Auth::user();
+            $shop = $user->shops()->findOrFail($shopId);
+            
+            // Get credentials from request or use saved settings
+            $username = $request->input('username');
+            $password = $request->input('password');
+            $baseUrl = $request->input('base_url');
+            
+            // If credentials provided in form, use them; otherwise use saved settings
+            if (!$username || !$password) {
+                if (!$shop->settings) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Please enter credentials in the form or configure settings first'
+                    ]);
+                }
+                // Use saved credentials
+                $username = null;
+                $password = null;
             }
             
-            // Temporarily set credentials for testing
-            if ($username) {
-                $shop->settings->ecofreight_username = $username;
+            // Ensure settings exist (create empty one if needed for base URL)
+            if (!$shop->settings) {
+                $shop->settings = $shop->settings()->create([
+                    'ecofreight_base_url' => $baseUrl ?: config('ecofreight.base_url')
+                ]);
             }
-            if ($password) {
-                $shop->settings->ecofreight_password = $password;
-            }
+            
+            // Temporarily update base URL if provided
+            $originalBaseUrl = $shop->settings->ecofreight_base_url;
             if ($baseUrl) {
                 $shop->settings->ecofreight_base_url = $baseUrl;
-            }
-        }
-
-        try {
-            // Temporarily update base URL if provided (will be reverted after test)
-            $originalBaseUrl = null;
-            if ($baseUrl && $shop->settings) {
-                $originalBaseUrl = $shop->settings->ecofreight_base_url;
-                $shop->settings->ecofreight_base_url = $baseUrl;
+            } elseif (!$shop->settings->ecofreight_base_url) {
+                $shop->settings->ecofreight_base_url = config('ecofreight.base_url');
             }
             
             $ecofreightService = new \App\Services\EcoFreightService($shop->settings);
             
-            // Use provided credentials or saved ones
-            $result = $ecofreightService->testConnection($username, $password);
+            // Test connection with provided or saved credentials
+            $result = $ecofreightService->testConnection($username ?: null, $password ?: null);
             
-            // Restore original base URL if it was changed
-            if ($originalBaseUrl !== null && $shop->settings) {
+            // Restore original base URL
+            if ($baseUrl && $originalBaseUrl) {
                 $shop->settings->ecofreight_base_url = $originalBaseUrl;
             }
             
             return response()->json($result);
+            
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Shop not found'
+            ], 404);
         } catch (\Exception $e) {
-            // Restore original base URL if it was changed
-            if (isset($originalBaseUrl) && $originalBaseUrl !== null && $shop->settings) {
-                $shop->settings->ecofreight_base_url = $originalBaseUrl;
-            }
+            \Log::error('Test connection error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             
             return response()->json([
                 'success' => false,

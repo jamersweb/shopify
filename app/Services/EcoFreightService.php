@@ -652,7 +652,7 @@ class EcoFreightService
         // Build EcoFreight v2 API payload with new structure
         $payload = [
             'order_reference' => $orderData['name'] ?? (string)($orderData['order_number'] ?? ''),
-            'service_type' => $serviceType === 'Express' ? 'express_delivery' : 'normal_delivery',
+            'service_type' => 'Outbound',
             'product_type' => 'non_document',
             'customer_service_type' => 'B2C', // Default to B2C, can be configured in settings if needed
             'schedule_delivery_date' => '',

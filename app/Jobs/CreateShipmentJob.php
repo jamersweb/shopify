@@ -140,18 +140,25 @@ class CreateShipmentJob implements ShouldQueue
             $awb = null;
             $reference = null;
             $trackingUrl = null;
+            $orderId = null;
+            $labelPrintUrl = null;
             
             if (isset($result['valid_orders']) && !empty($result['valid_orders'])) {
                 // Get the first valid order's data
                 $validOrderData = $result['valid_orders'][0]['data'] ?? [];
-                $awb = $validOrderData['awb'] ?? $validOrderData['AWB'] ?? null;
-                $reference = $validOrderData['reference'] ?? $validOrderData['order_reference'] ?? null;
-                $trackingUrl = $validOrderData['tracking_url'] ?? null;
+                // API returns tracking_no as the AWB number
+                $awb = $validOrderData['tracking_no'] ?? $validOrderData['awb'] ?? $validOrderData['AWB'] ?? null;
+                $reference = $validOrderData['order_reference'] ?? $validOrderData['reference'] ?? null;
+                $orderId = $validOrderData['order_id'] ?? null;
+                $labelPrintUrl = $validOrderData['awb_label_print'] ?? null;
+                $trackingUrl = $validOrderData['tracking_url'] ?? $labelPrintUrl ?? null;
             } else {
                 // Fallback to old format
-                $awb = $shipmentData['awb'] ?? $shipmentData['AWB'] ?? null;
-                $reference = $shipmentData['reference'] ?? $shipmentData['order_reference'] ?? null;
-                $trackingUrl = $shipmentData['tracking_url'] ?? null;
+                $awb = $shipmentData['tracking_no'] ?? $shipmentData['awb'] ?? $shipmentData['AWB'] ?? null;
+                $reference = $shipmentData['order_reference'] ?? $shipmentData['reference'] ?? null;
+                $orderId = $shipmentData['order_id'] ?? null;
+                $labelPrintUrl = $shipmentData['awb_label_print'] ?? null;
+                $trackingUrl = $shipmentData['tracking_url'] ?? $labelPrintUrl ?? null;
             }
             
             // Preserve original order data and merge with EcoFreight response
@@ -160,6 +167,8 @@ class CreateShipmentJob implements ShouldQueue
                 'ecofreight_response' => $shipmentData,
                 'ecofreight_awb' => $awb,
                 'ecofreight_reference' => $reference,
+                'ecofreight_order_id' => $orderId,
+                'awb_label_print' => $labelPrintUrl,
             ]);
             
             $shipment->update([

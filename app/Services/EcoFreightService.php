@@ -15,8 +15,13 @@ class EcoFreightService
     public function __construct(ShopSetting $settings = null)
     {
         $this->settings = $settings;
+        $baseUrl = $settings ? $settings->ecofreight_base_url : config('ecofreight.base_url');
+        
+        // Ensure base URL doesn't have trailing slash
+        $baseUrl = rtrim($baseUrl, '/');
+        
         $this->client = new Client([
-            'base_uri' => $settings ? $settings->ecofreight_base_url : config('ecofreight.base_url'),
+            'base_uri' => $baseUrl,
             'timeout' => 30,
             'headers' => [
                 'Content-Type' => 'application/json',
@@ -43,69 +48,114 @@ class EcoFreightService
                 ];
             }
 
-            // Use the auth endpoint (may need /en prefix depending on API version)
-            $response = $this->client->post('/en/api/auth', [
-                'json' => [
-                    'username' => $username,
-                    'password' => $password,
-                ],
-            ]);
-
-            $data = json_decode($response->getBody()->getContents(), true);
-
-            if ($response->getStatusCode() === 200 && isset($data['data']['token'])) {
-                // Store bearer token in settings if settings is available
-                if ($this->settings) {
-                    $this->settings->ecofreight_bearer_token = $data['data']['token'];
-                    $this->settings->last_connection_test = now();
-                    $this->settings->connection_status = true;
-                    $this->settings->save();
+            // Get the auth endpoint from config
+            $authEndpoint = config('ecofreight.endpoints.auth', '/api/auth');
+            
+            // Get base URL to check if it already includes /en
+            $baseUrl = $this->settings ? $this->settings->ecofreight_base_url : config('ecofreight.base_url');
+            $baseUrl = rtrim($baseUrl, '/');
+            
+            // Try endpoints - first without /en, then with /en (in case base URL doesn't include it)
+            $endpointsToTry = [
+                $authEndpoint,  // Try /api/auth first
+                '/en' . $authEndpoint,  // Then try /en/api/auth
+            ];
+            
+            $lastException = null;
+            foreach ($endpointsToTry as $endpoint) {
+                try {
+                    $response = $this->client->post($endpoint, [
+                        'json' => [
+                            'username' => $username,
+                            'password' => $password,
+                        ],
+                    ]);
+                    
+                    // If we get here, the request succeeded
+                    $data = json_decode($response->getBody()->getContents(), true);
+                    
+                    if ($response->getStatusCode() === 200 && isset($data['data']['token'])) {
+                        // Store bearer token in settings if settings is available
+                        if ($this->settings) {
+                            $this->settings->ecofreight_bearer_token = $data['data']['token'];
+                            $this->settings->last_connection_test = now();
+                            $this->settings->connection_status = true;
+                            $this->settings->save();
+                        }
+                        
+                        return [
+                            'success' => true,
+                            'message' => 'Connection successful',
+                            'data' => $data,
+                            'token' => $data['data']['token'],
+                        ];
+                    }
+                    
+                    // If status is 200 but no token, return failure
+                    return [
+                        'success' => false,
+                        'message' => 'Authentication failed: Token not received',
+                        'data' => $data,
+                    ];
+                } catch (RequestException $e) {
+                    $lastException = $e;
+                    // Continue to next endpoint
+                    continue;
                 }
-                
-                return [
-                    'success' => true,
-                    'message' => 'Connection successful',
-                    'data' => $data,
-                    'token' => $data['data']['token'],
-                ];
             }
+            
+            // If all endpoints failed, handle the exception
+            if ($lastException) {
+                $statusCode = $lastException->getResponse() ? $lastException->getResponse()->getStatusCode() : null;
+                $errorMessage = $lastException->getMessage();
+                
+                Log::error('EcoFreight connection test failed', [
+                    'error' => $errorMessage,
+                    'code' => $lastException->getCode(),
+                    'status_code' => $statusCode,
+                    'url' => $lastException->getRequest() ? $lastException->getRequest()->getUri() : null,
+                    'tried_endpoints' => $endpointsToTry,
+                ]);
 
+                // Provide more specific error messages
+                if ($statusCode === 404) {
+                    return [
+                        'success' => false,
+                        'message' => 'API endpoint not found. Tried: ' . implode(', ', $endpointsToTry) . '. Please verify the EcoFreight API base URL and endpoint are correct.',
+                        'data' => null,
+                    ];
+                } elseif ($statusCode === 401) {
+                    return [
+                        'success' => false,
+                        'message' => 'Authentication failed. Please check your username and password.',
+                        'data' => null,
+                    ];
+                } else {
+                    return [
+                        'success' => false,
+                        'message' => 'Connection failed: ' . $errorMessage,
+                        'data' => null,
+                    ];
+                }
+            }
+            
+            // This should never be reached, but just in case
             return [
                 'success' => false,
-                'message' => 'Authentication failed',
-                'data' => $data,
+                'message' => 'Connection test failed: No valid endpoint found',
+                'data' => null,
             ];
-        } catch (RequestException $e) {
-            $statusCode = $e->getResponse() ? $e->getResponse()->getStatusCode() : null;
-            $errorMessage = $e->getMessage();
-            
-            Log::error('EcoFreight connection test failed', [
-                'error' => $errorMessage,
+        } catch (\Exception $e) {
+            Log::error('EcoFreight connection test exception', [
+                'error' => $e->getMessage(),
                 'code' => $e->getCode(),
-                'status_code' => $statusCode,
-                'url' => $e->getRequest() ? $e->getRequest()->getUri() : null,
             ]);
-
-            // Provide more specific error messages
-            if ($statusCode === 404) {
-                return [
-                    'success' => false,
-                    'message' => 'API endpoint not found. Please verify that the EcoFreight API endpoint "/api/auth" is correct.',
-                    'data' => null,
-                ];
-            } elseif ($statusCode === 401) {
-                return [
-                    'success' => false,
-                    'message' => 'Authentication failed. Please check your username and password.',
-                    'data' => null,
-                ];
-            } else {
-                return [
-                    'success' => false,
-                    'message' => 'Connection failed: ' . $errorMessage,
-                    'data' => null,
-                ];
-            }
+            
+            return [
+                'success' => false,
+                'message' => 'Connection test failed: ' . $e->getMessage(),
+                'data' => null,
+            ];
         }
     }
 

@@ -130,14 +130,31 @@ class CreateShipmentJob implements ShouldQueue
 
             // Update shipment with EcoFreight data
             $shipmentData = $result['data'];
-            $awb = $shipmentData['awb'] ?? null;
+            
+            // Extract AWB from valid_orders if available (new API format)
+            $awb = null;
+            $reference = null;
+            $trackingUrl = null;
+            
+            if (isset($result['valid_orders']) && !empty($result['valid_orders'])) {
+                // Get the first valid order's data
+                $validOrderData = $result['valid_orders'][0]['data'] ?? [];
+                $awb = $validOrderData['awb'] ?? $validOrderData['AWB'] ?? null;
+                $reference = $validOrderData['reference'] ?? $validOrderData['order_reference'] ?? null;
+                $trackingUrl = $validOrderData['tracking_url'] ?? null;
+            } else {
+                // Fallback to old format
+                $awb = $shipmentData['awb'] ?? $shipmentData['AWB'] ?? null;
+                $reference = $shipmentData['reference'] ?? $shipmentData['order_reference'] ?? null;
+                $trackingUrl = $shipmentData['tracking_url'] ?? null;
+            }
             
             $shipment->update([
                 'ecofreight_awb' => $awb,
-                'ecofreight_reference' => $shipmentData['reference'] ?? null,
+                'ecofreight_reference' => $reference,
                 'status' => 'created',
                 'shipment_data' => $shipmentData,
-                'tracking_url' => $shipmentData['tracking_url'] ?? null,
+                'tracking_url' => $trackingUrl,
             ]);
 
             Log::info('Shipment created in EcoFreight', [
@@ -145,7 +162,9 @@ class CreateShipmentJob implements ShouldQueue
                 'shop_id' => $this->shopId,
                 'shipment_id' => $this->shipmentId,
                 'awb' => $awb,
-                'ecofreight_reference' => $shipmentData['reference'] ?? null,
+                'ecofreight_reference' => $reference,
+                'valid_orders_count' => count($result['valid_orders'] ?? []),
+                'invalid_orders_count' => count($result['invalid_orders'] ?? []),
             ]);
 
             // Queue label generation and fulfillment creation

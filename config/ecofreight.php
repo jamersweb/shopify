@@ -11,7 +11,7 @@ return [
     |
     */
 
-    'base_url' => env('ECOFREIGHT_BASE_URL', 'https://app.ecofreight.ae/en'),
+    'base_url' => env('ECOFREIGHT_BASE_URL', 'https://app.ecofreight.ae'),
     'sandbox_username' => env('ECOFREIGHT_SANDBOX_USERNAME', 'apitesting'),
     'sandbox_password' => env('ECOFREIGHT_SANDBOX_PASSWORD', 'apitesting'),
 
@@ -26,7 +26,7 @@ return [
 
     'endpoints' => [
         'auth' => '/api/auth',
-        'create_shipment' => '/api/create-order',
+        'create_shipment' => '/v2/api/client/order',
         'get_label' => '/api/shipments/{awb}/label',
         'track_shipment' => '/api/shipments/{awb}/track',
         'cancel_shipment' => '/api/shipments/{awb}/cancel',

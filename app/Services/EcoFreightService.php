@@ -43,8 +43,8 @@ class EcoFreightService
                 ];
             }
 
-            // Note: The base_uri already includes /en, so we just use /api/auth
-            $response = $this->client->post('/api/auth', [
+            // Use the auth endpoint (may need /en prefix depending on API version)
+            $response = $this->client->post('/en/api/auth', [
                 'json' => [
                     'username' => $username,
                     'password' => $password,
@@ -133,23 +133,70 @@ class EcoFreightService
                 $bearerToken = $this->settings->ecofreight_bearer_token;
             }
             
-            $response = $this->client->post('/api/create-order', [
-                'json' => $shipmentData,
+            // Ensure shipmentData is wrapped in an array (API expects array of orders)
+            $payload = is_array($shipmentData) && isset($shipmentData[0]) ? $shipmentData : [$shipmentData];
+            
+            // Use the new v2 API endpoint
+            $response = $this->client->post('/v2/api/client/order', [
+                'json' => $payload,
                 'headers' => [
-                    'Authorization' => 'Bearer ' . $bearerToken,
+                    'Authorization' => $bearerToken, // Token without 'Bearer ' prefix as per user's example
                 ],
             ]);
 
             $data = json_decode($response->getBody()->getContents(), true);
 
             if ($response->getStatusCode() === 201 || $response->getStatusCode() === 200) {
-                // EcoFreight v2 API returns status: success
-                if (isset($data['status']) && $data['status'] === 'success') {
+                // Check for success response - API returns status: 1 for success, 0 for failure
+                if (isset($data['status']) && $data['status'] === 1) {
+                    // Check if there are valid orders
+                    $validOrders = $data['data']['valid_order'] ?? [];
+                    $invalidOrders = $data['data']['in_valid_order'] ?? [];
+                    
+                    // If there are valid orders, it's a success
+                    if (!empty($validOrders)) {
+                        return [
+                            'success' => true,
+                            'message' => $data['message'] ?? 'Shipment created successfully',
+                            'data' => $data,
+                            'valid_orders' => $validOrders,
+                            'invalid_orders' => $invalidOrders,
+                        ];
+                    }
+                    
+                    // If there are only invalid orders, it's a failure
+                    if (!empty($invalidOrders)) {
+                        // Extract error message from first invalid order
+                        $firstInvalidOrder = is_array($invalidOrders[0]) ? $invalidOrders[0] : [];
+                        $errorMessage = $firstInvalidOrder['message'] ?? $data['message'] ?? 'Shipment creation failed';
+                        return [
+                            'success' => false,
+                            'message' => $errorMessage,
+                            'data' => $data,
+                            'valid_orders' => $validOrders,
+                            'invalid_orders' => $invalidOrders,
+                        ];
+                    }
+                    
+                    // If status is 1 but no orders in response, still consider it success
                     return [
                         'success' => true,
+                        'message' => $data['message'] ?? 'Shipment created successfully',
                         'data' => $data,
                     ];
                 }
+                
+                // Status is 0 or not set - failure
+                $errorMessage = $data['message'] ?? 'Shipment creation failed';
+                if (isset($data['data']['in_valid_order']) && !empty($data['data']['in_valid_order'])) {
+                    $errorMessage = $data['data']['in_valid_order'][0]['message'] ?? $errorMessage;
+                }
+                
+                return [
+                    'success' => false,
+                    'message' => $errorMessage,
+                    'data' => $data,
+                ];
             }
 
             return [
@@ -158,16 +205,23 @@ class EcoFreightService
                 'data' => $data,
             ];
         } catch (RequestException $e) {
+            $responseBody = null;
+            if ($e->getResponse()) {
+                $responseBody = $e->getResponse()->getBody()->getContents();
+            }
+            
             Log::error('EcoFreight shipment creation failed', [
                 'error' => $e->getMessage(),
                 'code' => $e->getCode(),
+                'status_code' => $e->getResponse() ? $e->getResponse()->getStatusCode() : null,
+                'response_body' => $responseBody,
                 'shipment_data' => $this->redactSensitiveData($shipmentData),
             ]);
 
             return [
                 'success' => false,
                 'message' => 'Shipment creation failed: ' . $e->getMessage(),
-                'data' => null,
+                'data' => $responseBody ? json_decode($responseBody, true) : null,
             ];
         }
     }
@@ -304,66 +358,150 @@ class EcoFreightService
     public function buildShipmentPayload(array $orderData, ShopSetting $settings): array
     {
         $shipTo = $orderData['shipping_address'];
+        $shipFrom = $settings; // Use settings for shipper details
 
         // Determine service type from shipping rate title (fallback to normal_delivery if not found)
         $serviceType = $this->mapServiceType($orderData['shipping_lines'][0]['title'] ?? 'Standard');
 
-        // Calculate total weight and quantity
+        // Build package details with item details
+        $packageDetails = [];
         $totalWeight = 0;
         $totalQuantity = 0;
         $itemDescriptions = [];
         
         foreach ($orderData['line_items'] as $item) {
-            $weight = $item['weight'] ?? $settings->default_weight;
-            $totalWeight += $weight * $item['quantity'];
-            $totalQuantity += $item['quantity'];
+            $weight = ($item['grams'] ?? ($item['weight'] ?? $settings->default_weight * 1000)) / 1000; // Convert to kg
+            $quantity = $item['quantity'] ?? 1;
+            $totalWeight += $weight * $quantity;
+            $totalQuantity += $quantity;
             $itemDescriptions[] = $item['title'];
+            
+            // Build item details for this line item
+            $itemDetails = [];
+            
+            // Extract HS code from properties (Shopify properties are array of objects with 'name' and 'value')
+            $hsCode = '';
+            if (isset($item['properties']) && is_array($item['properties'])) {
+                foreach ($item['properties'] as $property) {
+                    if (isset($property['name']) && strtolower($property['name']) === 'hs_code') {
+                        $hsCode = $property['value'] ?? '';
+                        break;
+                    }
+                }
+            }
+            
+            for ($i = 0; $i < $quantity; $i++) {
+                $itemDetails[] = [
+                    'item_code' => $item['sku'] ?? (string)($item['variant_id'] ?? ''),
+                    'hs_code' => $hsCode,
+                    'description' => $item['title'],
+                    'quantity' => '1',
+                ];
+            }
+            
+            // Get dimensions (default if not available)
+            $length = $item['dimensions']['length'] ?? ($settings->default_dimensions['length'] ?? 10);
+            $width = $item['dimensions']['width'] ?? ($settings->default_dimensions['width'] ?? 10);
+            $height = $item['dimensions']['height'] ?? ($settings->default_dimensions['height'] ?? 10);
+            
+            $packageDetails[] = [
+                'description' => $item['title'],
+                'quantity' => (string)$quantity,
+                'weight' => (string)round($weight * $quantity, 2),
+                'height' => (string)$height,
+                'width' => (string)$width,
+                'length' => (string)$length,
+                'dimension_units' => 'CM',
+                'item_details' => $itemDetails,
+            ];
         }
         
-        // Build description from item titles
-        $itemDescription = implode(', ', $itemDescriptions);
+        // If no line items, create a default package
+        if (empty($packageDetails)) {
+            $itemDescription = implode(', ', $itemDescriptions) ?: 'General Goods';
+            $defaultWeight = $settings->default_weight ?? 1.0;
+            $defaultDimensions = $settings->default_dimensions ?? ['length' => 10, 'width' => 10, 'height' => 10];
+            
+            $packageDetails[] = [
+                'description' => $itemDescription,
+                'quantity' => '1',
+                'weight' => (string)$defaultWeight,
+                'height' => (string)$defaultDimensions['height'],
+                'width' => (string)$defaultDimensions['width'],
+                'length' => (string)$defaultDimensions['length'],
+                'dimension_units' => 'CM',
+                'item_details' => [
+                    [
+                        'item_code' => '',
+                        'hs_code' => '',
+                        'description' => $itemDescription,
+                        'quantity' => '1',
+                    ],
+                ],
+            ];
+        }
 
-        // Build EcoFreight v2 API payload
+        // Build EcoFreight v2 API payload with new structure
         $payload = [
-            'order_reference' => $orderData['name'] ?? $orderData['order_number'],
+            'order_reference' => $orderData['name'] ?? (string)($orderData['order_number'] ?? ''),
             'service_type' => $serviceType === 'Express' ? 'express_delivery' : 'normal_delivery',
             'product_type' => 'non_document',
-            'consignee_name' => $shipTo['name'] ?? ($shipTo['first_name'] . ' ' . $shipTo['last_name']),
-            'consignee_address' => $shipTo['address1'],
-            'consignee_city' => $shipTo['city'],
-            'consignee_mobile_no' => $shipTo['phone'],
-            'consignee_alt_mobile_no' => $shipTo['phone2'] ?? '',
+            'customer_service_type' => 'B2C', // Default to B2C, can be configured in settings if needed
+            'schedule_delivery_date' => '',
+            'shipment_value' => floatval($orderData['subtotal_price'] ?? 0),
+            'currency' => $orderData['currency'] ?? 'AED',
+            'request_type' => '1',
+            'delivery_attempt_mode' => '1',
+            'location' => [
+                'lat' => isset($shipTo['latitude']) ? (string)$shipTo['latitude'] : '',
+                'lon' => isset($shipTo['longitude']) ? (string)$shipTo['longitude'] : '',
+            ],
+            'shipper_details' => [
+                'company_name' => $shipFrom->ship_from_company ?? '',
+                'sender_name' => $shipFrom->ship_from_contact ?? '',
+                'address' => $shipFrom->ship_from_address1 ?? '',
+                'city' => $shipFrom->ship_from_city ?? '',
+                'country' => $shipFrom->ship_from_country ?? 'United Arab Emirates',
+                'email' => $shipFrom->ship_from_email ?? '',
+                'mobile_no' => $shipFrom->ship_from_phone ?? '',
+                'alt_mobile_no' => '',
+            ],
+            'consignee_details' => [
+                'company_name' => $shipTo['company'] ?? '',
+                'receiver_name' => $shipTo['name'] ?? ($shipTo['first_name'] . ' ' . ($shipTo['last_name'] ?? '')),
+                'email' => $shipTo['email'] ?? '',
+                'address' => $shipTo['address1'] ?? '',
+                'city' => $shipTo['city'] ?? '',
+                'country' => $shipTo['country'] ?? 'United Arab Emirates',
+                'mobile_no' => $shipTo['phone'] ?? '',
+                'alt_mobile_no' => $shipTo['phone2'] ?? '',
+            ],
+            'package_details' => $packageDetails,
         ];
 
         // Add COD if enabled
         if ($settings->cod_enabled) {
-            $payload['cod'] = floatval($orderData['total_price']) + floatval($settings->cod_fee);
-            $payload['cod_payment_mode'] = 'cash_only';
+            $codAmount = floatval($orderData['total_price'] ?? 0) + floatval($settings->cod_fee ?? 0);
+            $payload['cod'] = [
+                'amount' => (string)$codAmount,
+                'payment_mode' => $settings->cod_payment_mode ?? 'any',
+            ];
         }
 
-        // Add item details
-        $payload['item_description'] = $itemDescription;
-        $payload['item_quantity'] = $totalQuantity;
-        $payload['item_weight'] = round($totalWeight, 2);
-        $payload['shipment_value'] = floatval($orderData['subtotal_price']);
+        // Add customs payment if needed
+        if (isset($orderData['customs_payment_mode'])) {
+            $payload['customs_payment'] = [
+                'payment_mode' => $orderData['customs_payment_mode'],
+            ];
+        } else {
+            $payload['customs_payment'] = [
+                'payment_mode' => 'DDP',
+            ];
+        }
 
-        // Add optional fields
+        // Add address2 if available
         if (!empty($shipTo['address2'])) {
-            $payload['consignee_address'] .= ', ' . $shipTo['address2'];
-        }
-
-        // Add special instructions if available (from order notes)
-        if (!empty($orderData['note'])) {
-            $payload['special_instruction'] = $orderData['note'];
-        }
-
-        // Customer service type (C2C is default)
-        $payload['customer_service_type'] = 'C2C';
-
-        // Add coordinates if available
-        if (isset($shipTo['latitude']) && isset($shipTo['longitude'])) {
-            $payload['lat'] = floatval($shipTo['latitude']);
-            $payload['lon'] = floatval($shipTo['longitude']);
+            $payload['consignee_details']['address'] .= ', ' . $shipTo['address2'];
         }
 
         // Validate payload before returning
@@ -381,30 +519,42 @@ class EcoFreightService
             'order_reference',
             'service_type',
             'product_type',
-            'consignee_name',
-            'consignee_address',
-            'consignee_city',
-            'consignee_mobile_no',
-            'item_description',
-            'item_quantity',
-            'item_weight',
+            'customer_service_type',
+            'shipper_details.company_name',
+            'shipper_details.sender_name',
+            'shipper_details.address',
+            'shipper_details.city',
+            'shipper_details.mobile_no',
+            'consignee_details.receiver_name',
+            'consignee_details.address',
+            'consignee_details.city',
+            'consignee_details.mobile_no',
+            'package_details',
         ];
 
         foreach ($requiredFields as $field) {
             $value = data_get($payload, $field);
-            if (empty($value)) {
+            if (empty($value) && $value !== '0') {
                 throw new \InvalidArgumentException("Required field '{$field}' is missing or empty in shipment payload");
             }
         }
 
-        // Validate item_weight
-        if (!is_numeric($payload['item_weight']) || $payload['item_weight'] <= 0) {
-            throw new \InvalidArgumentException("Item weight must be a valid number > 0");
+        // Validate package_details
+        if (empty($payload['package_details']) || !is_array($payload['package_details'])) {
+            throw new \InvalidArgumentException("package_details must be a non-empty array");
         }
 
-        // Validate item_quantity
-        if (!is_numeric($payload['item_quantity']) || $payload['item_quantity'] <= 0) {
-            throw new \InvalidArgumentException("Item quantity must be a valid number > 0");
+        // Validate each package
+        foreach ($payload['package_details'] as $index => $package) {
+            if (empty($package['description'])) {
+                throw new \InvalidArgumentException("Package {$index}: description is required");
+            }
+            if (empty($package['quantity']) || !is_numeric($package['quantity']) || $package['quantity'] <= 0) {
+                throw new \InvalidArgumentException("Package {$index}: quantity must be a valid number > 0");
+            }
+            if (empty($package['weight']) || !is_numeric($package['weight']) || $package['weight'] <= 0) {
+                throw new \InvalidArgumentException("Package {$index}: weight must be a valid number > 0");
+            }
         }
     }
 
@@ -427,18 +577,39 @@ class EcoFreightService
      */
     protected function redactSensitiveData(array $data): array
     {
+        // Handle array of orders
+        if (isset($data[0]) && is_array($data[0])) {
+            foreach ($data as $index => $order) {
+                $data[$index] = $this->redactOrderData($order);
+            }
+            return $data;
+        }
+        
+        return $this->redactOrderData($data);
+    }
+
+    /**
+     * Redact sensitive data from a single order.
+     */
+    protected function redactOrderData(array $order): array
+    {
         $sensitiveFields = [
-            'consignee_mobile_no',
-            'consignee_alt_mobile_no',
-            'consignee_address',
+            'shipper_details.mobile_no',
+            'shipper_details.alt_mobile_no',
+            'shipper_details.email',
+            'shipper_details.address',
+            'consignee_details.mobile_no',
+            'consignee_details.alt_mobile_no',
+            'consignee_details.email',
+            'consignee_details.address',
         ];
         
         foreach ($sensitiveFields as $field) {
-            if (isset($data[$field])) {
-                $data[$field] = '[REDACTED]';
+            if (data_get($order, $field) !== null) {
+                data_set($order, $field, '[REDACTED]');
             }
         }
 
-        return $data;
+        return $order;
     }
 }

@@ -113,6 +113,11 @@ class DashboardController extends Controller
                     ->where('shop_id', $shop->id)
                     ->first();
                 
+                // Skip if shipment exists and is cancelled/disabled
+                if ($existingShipment && $existingShipment->status === 'cancelled') {
+                    continue;
+                }
+                
                 if (!$existingShipment && $order['financial_status'] === 'paid') {
                     // Create shipment record
                     $shipment = Shipment::create([
@@ -282,5 +287,229 @@ class DashboardController extends Controller
         $codFee = floatval($settings->cod_fee ?? 0);
         
         return $orderTotal + $codFee;
+    }
+
+    /**
+     * Get shipment data for editing
+     */
+    public function editShipment($id)
+    {
+        $user = Auth::user();
+        $shops = $user->shops()->pluck('id');
+        
+        $shipment = Shipment::whereIn('shop_id', $shops)
+            ->findOrFail($id);
+        
+        return response()->json([
+            'success' => true,
+            'shipment' => $shipment
+        ]);
+    }
+
+    /**
+     * Update shipment/order details
+     */
+    public function updateShipment(Request $request, $id)
+    {
+        $user = Auth::user();
+        $shops = $user->shops()->pluck('id');
+        
+        $shipment = Shipment::whereIn('shop_id', $shops)
+            ->findOrFail($id);
+        
+        // Don't allow editing if already sent to EcoFreight
+        if ($shipment->ecofreight_awb) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot edit order that has already been sent to EcoFreight'
+            ]);
+        }
+        
+        try {
+            // Get current shipment data
+            $orderData = $shipment->shipment_data ?? [];
+            $shippingAddress = $orderData['shipping_address'] ?? [];
+            
+            // Update shipping address
+            if ($request->has('customer_name')) {
+                $nameParts = explode(' ', $request->input('customer_name'), 2);
+                $shippingAddress['first_name'] = $nameParts[0] ?? '';
+                $shippingAddress['last_name'] = $nameParts[1] ?? '';
+                $shippingAddress['name'] = $request->input('customer_name');
+            }
+            
+            if ($request->has('customer_phone')) {
+                $shippingAddress['phone'] = $request->input('customer_phone');
+            }
+            
+            if ($request->has('customer_email')) {
+                $shippingAddress['email'] = $request->input('customer_email');
+                $orderData['email'] = $request->input('customer_email');
+            }
+            
+            if ($request->has('address1')) {
+                $shippingAddress['address1'] = $request->input('address1');
+            }
+            
+            if ($request->has('address2')) {
+                $shippingAddress['address2'] = $request->input('address2');
+            }
+            
+            if ($request->has('city')) {
+                $shippingAddress['city'] = $request->input('city');
+            }
+            
+            if ($request->has('postal_code')) {
+                $shippingAddress['zip'] = $request->input('postal_code');
+                $shippingAddress['postal_code'] = $request->input('postal_code');
+            }
+            
+            if ($request->has('province')) {
+                $shippingAddress['province'] = $request->input('province');
+            }
+            
+            if ($request->has('country')) {
+                $shippingAddress['country'] = $request->input('country');
+            }
+            
+            // Update order data
+            $orderData['shipping_address'] = $shippingAddress;
+            
+            // Update shipment fields
+            $updateData = [
+                'shipment_data' => $orderData,
+            ];
+            
+            if ($request->has('service_type')) {
+                $updateData['service_type'] = $request->input('service_type');
+            }
+            
+            if ($request->has('cod_enabled')) {
+                $updateData['cod_enabled'] = (bool)$request->input('cod_enabled');
+            }
+            
+            if ($request->has('cod_amount')) {
+                $updateData['cod_amount'] = floatval($request->input('cod_amount'));
+            }
+            
+            $shipment->update($updateData);
+            
+            \Log::info('Shipment updated', [
+                'shipment_id' => $shipment->id,
+                'order_name' => $shipment->shopify_order_name,
+                'updated_fields' => array_keys($updateData)
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Order details updated successfully'
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Failed to update shipment', [
+                'shipment_id' => $shipment->id,
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update order: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Cancel a shipment/order
+     */
+    public function cancelShipment(Request $request, $id)
+    {
+        $user = Auth::user();
+        $shops = $user->shops()->pluck('id');
+        
+        $shipment = Shipment::whereIn('shop_id', $shops)
+            ->findOrFail($id);
+        
+        // Don't allow cancelling if already delivered
+        if ($shipment->status === 'delivered') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot cancel a delivered order'
+            ]);
+        }
+        
+        // If already sent to EcoFreight, cancel there too
+        if ($shipment->ecofreight_awb && $shipment->shop->settings) {
+            try {
+                $ecofreightService = new \App\Services\EcoFreightService($shipment->shop->settings);
+                $result = $ecofreightService->cancelShipment($shipment->ecofreight_awb);
+                
+                if (!$result['success']) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Failed to cancel in EcoFreight: ' . $result['message']
+                    ]);
+                }
+            } catch (\Exception $e) {
+                \Log::error('Failed to cancel shipment in EcoFreight', [
+                    'shipment_id' => $shipment->id,
+                    'awb' => $shipment->ecofreight_awb,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+        
+        // Update shipment status
+        $shipment->update([
+            'status' => 'cancelled',
+            'error_message' => 'Cancelled by user'
+        ]);
+        
+        \Log::info('Shipment cancelled', [
+            'shipment_id' => $shipment->id,
+            'order_name' => $shipment->shopify_order_name,
+            'awb' => $shipment->ecofreight_awb
+        ]);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Order cancelled successfully'
+        ]);
+    }
+
+    /**
+     * Disable a shipment/order (prevent automatic processing)
+     */
+    public function disableShipment(Request $request, $id)
+    {
+        $user = Auth::user();
+        $shops = $user->shops()->pluck('id');
+        
+        $shipment = Shipment::whereIn('shop_id', $shops)
+            ->findOrFail($id);
+        
+        // Don't allow disabling if already sent to EcoFreight
+        if ($shipment->ecofreight_awb) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot disable order that has already been sent to EcoFreight'
+            ]);
+        }
+        
+        // Update shipment status to cancelled (we use cancelled as disabled)
+        // Or we could add a separate 'disabled' status
+        $shipment->update([
+            'status' => 'cancelled',
+            'error_message' => 'Disabled by user - will not be processed automatically'
+        ]);
+        
+        \Log::info('Shipment disabled', [
+            'shipment_id' => $shipment->id,
+            'order_name' => $shipment->shopify_order_name
+        ]);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Order disabled successfully. It will not be processed automatically.'
+        ]);
     }
 }

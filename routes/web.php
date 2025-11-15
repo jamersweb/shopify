@@ -25,8 +25,12 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard/orders', [DashboardController::class, 'orders'])->name('dashboard.orders');
     Route::post('/dashboard/fetch-orders', [DashboardController::class, 'fetchOrders'])->name('dashboard.fetch-orders');
     Route::get('/dashboard/shipment/{id}', [DashboardController::class, 'shipmentDetails'])->name('dashboard.shipment');
+    Route::get('/dashboard/shipment/{id}/edit', [DashboardController::class, 'editShipment'])->name('dashboard.shipment.edit');
+    Route::post('/dashboard/shipment/{id}/update', [DashboardController::class, 'updateShipment'])->name('dashboard.shipment.update');
     Route::post('/dashboard/shipment/{id}/send', [DashboardController::class, 'sendShipment'])->name('dashboard.shipment.send');
     Route::post('/dashboard/shipment/{id}/retry', [DashboardController::class, 'retryShipment'])->name('dashboard.shipment.retry');
+    Route::post('/dashboard/shipment/{id}/cancel', [DashboardController::class, 'cancelShipment'])->name('dashboard.shipment.cancel');
+    Route::post('/dashboard/shipment/{id}/disable', [DashboardController::class, 'disableShipment'])->name('dashboard.shipment.disable');
     
     // Settings routes
     Route::get('/app/settings', [SettingsController::class, 'index'])->name('settings');

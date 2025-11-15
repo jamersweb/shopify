@@ -149,18 +149,27 @@
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                     <div class="flex space-x-2">
                                         <a href="/dashboard/shipment/{{ $shipment->id }}" 
-                                           class="text-primary hover:text-blue-700">
+                                           class="text-primary hover:text-blue-700" title="View Details">
                                             <i class="fas fa-eye"></i>
                                         </a>
+                                        @if($shipment->status === 'pending' && !$shipment->ecofreight_awb)
+                                            <button onclick="sendShipment({{ $shipment->id }}, this)" 
+                                                    class="text-green-600 hover:text-green-700" 
+                                                    title="Send to EcoFreight">
+                                                <i class="fas fa-paper-plane"></i>
+                                            </button>
+                                        @endif
                                         @if($shipment->status === 'error')
-                                            <button onclick="retryShipment({{ $shipment->id }})" 
-                                                    class="text-yellow-600 hover:text-yellow-700">
+                                            <button onclick="retryShipment({{ $shipment->id }}, this)" 
+                                                    class="text-yellow-600 hover:text-yellow-700"
+                                                    title="Retry">
                                                 <i class="fas fa-redo"></i>
                                             </button>
                                         @endif
                                         @if($shipment->ecofreight_awb)
-                                            <a href="{{ $shipment->tracking_url }}" target="_blank" 
-                                               class="text-green-600 hover:text-green-700">
+                                            <a href="{{ $shipment->tracking_url ?? '#' }}" target="_blank" 
+                                               class="text-green-600 hover:text-green-700"
+                                               title="Track Shipment">
                                                 <i class="fas fa-truck"></i>
                                             </a>
                                         @endif
@@ -279,28 +288,110 @@
         });
     }
     
-    function retryShipment(shipmentId) {
-        if (confirm('Retry creating shipment for this order?')) {
-            fetch(`/dashboard/shipment/${shipmentId}/retry`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': getCSRFToken()
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert('Shipment retry initiated');
-                    location.reload();
-                } else {
-                    alert('Error: ' + data.message);
-                }
-            })
-            .catch(error => {
-                alert('Error: ' + error.message);
-            });
-        }
+    function sendShipment(shipmentId, buttonElement) {
+        const button = buttonElement || event.target.closest('button');
+        const originalHTML = button.innerHTML;
+        
+        // Show loading state
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        button.disabled = true;
+        
+        fetch(`/dashboard/shipment/${shipmentId}/send`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': getCSRFToken()
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Show success notification
+                const notification = document.createElement('div');
+                notification.className = 'fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg bg-green-50 border border-green-200';
+                notification.innerHTML = `
+                    <div class="flex items-center">
+                        <i class="fas fa-check-circle text-green-500 text-xl mr-3"></i>
+                        <div>
+                            <p class="font-semibold text-green-800">Shipment Queued</p>
+                            <p class="text-sm text-green-600">${data.message}</p>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(notification);
+                
+                // Auto-hide and reload
+                setTimeout(() => {
+                    notification.style.display = 'none';
+                    setTimeout(() => {
+                        notification.remove();
+                        location.reload();
+                    }, 300);
+                }, 3000);
+            } else {
+                alert('Error: ' + data.message);
+                button.innerHTML = originalHTML;
+                button.disabled = false;
+            }
+        })
+        .catch(error => {
+            alert('Error: ' + error.message);
+            button.innerHTML = originalHTML;
+            button.disabled = false;
+        });
+    }
+    
+    function retryShipment(shipmentId, buttonElement) {
+        const button = buttonElement || event.target.closest('button');
+        const originalHTML = button.innerHTML;
+        
+        // Show loading state
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        button.disabled = true;
+        
+        fetch(`/dashboard/shipment/${shipmentId}/retry`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': getCSRFToken()
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Show success notification
+                const notification = document.createElement('div');
+                notification.className = 'fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg bg-green-50 border border-green-200';
+                notification.innerHTML = `
+                    <div class="flex items-center">
+                        <i class="fas fa-check-circle text-green-500 text-xl mr-3"></i>
+                        <div>
+                            <p class="font-semibold text-green-800">Retry Initiated</p>
+                            <p class="text-sm text-green-600">${data.message}</p>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(notification);
+                
+                // Auto-hide and reload
+                setTimeout(() => {
+                    notification.style.display = 'none';
+                    setTimeout(() => {
+                        notification.remove();
+                        location.reload();
+                    }, 300);
+                }, 3000);
+            } else {
+                alert('Error: ' + data.message);
+                button.innerHTML = originalHTML;
+                button.disabled = false;
+            }
+        })
+        .catch(error => {
+            alert('Error: ' + error.message);
+            button.innerHTML = originalHTML;
+            button.disabled = false;
+        });
     }
 </script>
 @endpush

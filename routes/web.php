@@ -25,6 +25,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard/orders', [DashboardController::class, 'orders'])->name('dashboard.orders');
     Route::post('/dashboard/fetch-orders', [DashboardController::class, 'fetchOrders'])->name('dashboard.fetch-orders');
     Route::get('/dashboard/shipment/{id}', [DashboardController::class, 'shipmentDetails'])->name('dashboard.shipment');
+    Route::post('/dashboard/shipment/{id}/send', [DashboardController::class, 'sendShipment'])->name('dashboard.shipment.send');
     Route::post('/dashboard/shipment/{id}/retry', [DashboardController::class, 'retryShipment'])->name('dashboard.shipment.retry');
     
     // Settings routes

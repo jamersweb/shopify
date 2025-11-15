@@ -175,12 +175,55 @@ class DashboardController extends Controller
             'retry_count' => ($shipment->retry_count ?? 0) + 1
         ]);
         
-        // Queue the shipment creation job
-        \App\Jobs\CreateShipmentJob::dispatch($shipment->shopify_order_id, $shipment->shop_id);
+        // Queue the shipment creation job with correct parameters (shopId, shipmentId, requestId)
+        \App\Jobs\CreateShipmentJob::dispatch($shipment->shop_id, $shipment->id, uniqid('retry_', true));
         
         return response()->json([
             'success' => true,
             'message' => 'Shipment retry initiated'
+        ]);
+    }
+
+    /**
+     * Send shipment to EcoFreight
+     */
+    public function sendShipment(Request $request, $id)
+    {
+        $user = Auth::user();
+        $shops = $user->shops()->pluck('id');
+        
+        $shipment = Shipment::whereIn('shop_id', $shops)->findOrFail($id);
+        
+        // Check if shipment is already sent
+        if ($shipment->ecofreight_awb) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Shipment already sent to EcoFreight. AWB: ' . $shipment->ecofreight_awb
+            ]);
+        }
+        
+        // Check if shop settings are configured
+        if (!$shipment->shop->settings) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Shop settings not configured. Please configure EcoFreight credentials first.'
+            ]);
+        }
+        
+        // Update status to pending if it's not already
+        if ($shipment->status !== 'pending') {
+            $shipment->update([
+                'status' => 'pending',
+                'error_message' => null
+            ]);
+        }
+        
+        // Queue the shipment creation job
+        \App\Jobs\CreateShipmentJob::dispatch($shipment->shop_id, $shipment->id, uniqid('send_', true));
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Shipment queued for EcoFreight. Processing...'
         ]);
     }
 }

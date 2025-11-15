@@ -290,26 +290,84 @@
         const button = document.querySelector('button[onclick="testConnection()"]');
         const originalText = button.innerHTML;
         
-        button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Testing...';
+        // Show loading state
+        button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Testing Connection...';
         button.disabled = true;
+        
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = 'fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-md';
+        notification.style.display = 'none';
+        document.body.appendChild(notification);
+        
+        // Get credentials from form if available
+        const username = document.getElementById('ecofreight_username')?.value;
+        const password = document.getElementById('ecofreight_password')?.value;
+        const baseUrl = document.getElementById('ecofreight_base_url')?.value;
+        
+        const payload = {};
+        if (username) payload.username = username;
+        if (password && password !== '••••••••') payload.password = password;
+        if (baseUrl) payload.base_url = baseUrl;
         
         fetch(`/app/settings/shop/{{ $shop->id }}/test-connection`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-            }
+            },
+            body: JSON.stringify(payload)
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alert('✅ Connection successful!');
+                notification.className = 'fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-md bg-green-50 border border-green-200';
+                notification.innerHTML = `
+                    <div class="flex items-center">
+                        <i class="fas fa-check-circle text-green-500 text-xl mr-3"></i>
+                        <div>
+                            <p class="font-semibold text-green-800">Connection Successful!</p>
+                            <p class="text-sm text-green-600">${data.message || 'Your EcoFreight credentials are valid.'}</p>
+                        </div>
+                    </div>
+                `;
             } else {
-                alert('❌ Connection failed: ' + data.message);
+                notification.className = 'fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-md bg-red-50 border border-red-200';
+                notification.innerHTML = `
+                    <div class="flex items-center">
+                        <i class="fas fa-times-circle text-red-500 text-xl mr-3"></i>
+                        <div>
+                            <p class="font-semibold text-red-800">Connection Failed</p>
+                            <p class="text-sm text-red-600">${data.message || 'Please check your credentials and try again.'}</p>
+                        </div>
+                    </div>
+                `;
             }
+            notification.style.display = 'block';
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                notification.style.display = 'none';
+                setTimeout(() => notification.remove(), 300);
+            }, 5000);
         })
         .catch(error => {
-            alert('❌ Error: ' + error.message);
+            notification.className = 'fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-md bg-red-50 border border-red-200';
+            notification.innerHTML = `
+                <div class="flex items-center">
+                    <i class="fas fa-exclamation-circle text-red-500 text-xl mr-3"></i>
+                    <div>
+                        <p class="font-semibold text-red-800">Error</p>
+                        <p class="text-sm text-red-600">${error.message || 'An unexpected error occurred. Please try again.'}</p>
+                    </div>
+                </div>
+            `;
+            notification.style.display = 'block';
+            
+            setTimeout(() => {
+                notification.style.display = 'none';
+                setTimeout(() => notification.remove(), 300);
+            }, 5000);
         })
         .finally(() => {
             button.innerHTML = originalText;

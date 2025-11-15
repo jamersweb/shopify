@@ -210,7 +210,28 @@
     }
     
     function refreshOrders() {
-        location.reload();
+        const button = document.querySelector('button[onclick="refreshOrders()"]');
+        const originalText = button.innerHTML;
+        
+        // Show loading state
+        button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Refreshing...';
+        button.disabled = true;
+        
+        // Show a brief message
+        const message = document.createElement('div');
+        message.className = 'fixed top-4 right-4 z-50 p-3 rounded-lg shadow-lg bg-blue-50 border border-blue-200';
+        message.innerHTML = `
+            <div class="flex items-center">
+                <i class="fas fa-info-circle text-blue-500 mr-2"></i>
+                <span class="text-sm text-blue-800">Refreshing orders...</span>
+            </div>
+        `;
+        document.body.appendChild(message);
+        
+        // Reload after a brief delay to show the message
+        setTimeout(() => {
+            location.reload();
+        }, 500);
     }
     
     function fetchAllOrders() {

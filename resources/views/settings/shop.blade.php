@@ -57,13 +57,33 @@
                                value="{{ old('ecofreight_base_url', $settings->ecofreight_base_url ?? 'https://app.ecofreight.ae/en') }}"
                                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm">
                     </div>
+                    
+                    <div class="md:col-span-2">
+                        <label for="ecofreight_bearer_token" class="block text-sm font-medium text-gray-700">
+                            Bearer Token (Optional)
+                            <span class="text-xs text-gray-500 font-normal">- Leave empty to use username/password authentication</span>
+                        </label>
+                        <input type="text" name="ecofreight_bearer_token" id="ecofreight_bearer_token" 
+                               value="{{ old('ecofreight_bearer_token', ($settings && $settings->ecofreight_bearer_token) ? '••••••••••••••••••••••••••••••••' : '') }}"
+                               placeholder="Enter your EcoFreight bearer token (JWT)"
+                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm font-mono text-sm">
+                        <p class="mt-1 text-sm text-gray-500">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            If provided, this token will be used for all API requests. Otherwise, username/password will be used to authenticate.
+                        </p>
+                    </div>
                 </div>
                 
-                <div class="mt-4">
+                <div class="mt-4 flex space-x-3">
                     <button type="button" onclick="testConnection()" 
                             class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                         <i class="fas fa-plug mr-2"></i>
                         Test Connection
+                    </button>
+                    <button type="button" onclick="clearBearerToken()" 
+                            class="inline-flex items-center px-4 py-2 border border-red-300 shadow-sm text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50">
+                        <i class="fas fa-trash mr-2"></i>
+                        Clear Bearer Token
                     </button>
                 </div>
             </div>
@@ -376,6 +396,12 @@
             button.innerHTML = originalText;
             button.disabled = false;
         });
+    }
+    
+    function clearBearerToken() {
+        if (confirm('Are you sure you want to clear the bearer token? You will need to use username/password authentication or set a new token.')) {
+            document.getElementById('ecofreight_bearer_token').value = '';
+        }
     }
 </script>
 @endpush

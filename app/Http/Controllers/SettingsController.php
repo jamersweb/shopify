@@ -80,6 +80,8 @@ class SettingsController extends Controller
             'ecofreight_username' => $request->input('ecofreight_username'),
             'ecofreight_password' => $request->input('ecofreight_password'),
             'ecofreight_base_url' => $request->input('ecofreight_base_url'),
+            // Bearer token - only update if a new value is provided (not the masked value)
+            'ecofreight_bearer_token' => $this->handleBearerTokenUpdate($request, $shop),
             // Ship-From Information mapping
             'ship_from_company' => $request->input('company_name'),
             'ship_from_contact' => $request->input('contact_name'),
@@ -108,6 +110,12 @@ class SettingsController extends Controller
 
         // Encrypt sensitive data (password is already encrypted by model accessor, but we need to set it)
         // The model will handle encryption automatically via the setter
+        
+        // Remove null values from settingsData (to avoid overwriting with null)
+        // Keep false values (for checkboxes) but remove null values
+        $settingsData = array_filter($settingsData, function($value) {
+            return $value !== null;
+        }, ARRAY_FILTER_USE_BOTH);
 
         if ($shop->settings) {
             $shop->settings->update($settingsData);
@@ -207,5 +215,25 @@ class SettingsController extends Controller
         $shop->delete();
         
         return redirect()->route('settings')->with('success', 'Shop disconnected successfully!');
+    }
+
+    /**
+     * Handle bearer token update - only update if a new value is provided
+     */
+    protected function handleBearerTokenUpdate(Request $request, Shop $shop): ?string
+    {
+        $token = $request->input('ecofreight_bearer_token');
+        
+        // If token is empty or is the masked value, don't update
+        if (empty($token) || $token === '••••••••••••••••••••••••••••••••') {
+            // If shop has settings, keep existing token
+            if ($shop->settings && $shop->settings->ecofreight_bearer_token) {
+                return null; // Don't update - keep existing
+            }
+            return null; // No token to set
+        }
+        
+        // New token provided - return it to be saved
+        return $token;
     }
 }

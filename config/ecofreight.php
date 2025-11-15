@@ -53,7 +53,7 @@ return [
     */
 
     'defaults' => [
-        'weight' => 1.0, // kg
+        'weight' => 0.4, // kg (400g)
         'dimensions' => [
             'length' => 30, // cm
             'width' => 20,  // cm

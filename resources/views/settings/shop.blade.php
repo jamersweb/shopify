@@ -156,8 +156,10 @@
                     <div>
                         <label for="default_weight" class="block text-sm font-medium text-gray-700">Default Weight (kg)</label>
                         <input type="number" step="0.1" name="default_weight" id="default_weight" 
-                               value="{{ old('default_weight', $settings->default_weight ?? '1.0') }}"
+                               value="{{ old('default_weight', $settings->default_weight ?? '0.4') }}"
+                               placeholder="0.4 (400g)"
                                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm">
+                        <p class="mt-1 text-sm text-gray-500">Default: 0.4 kg (400g) per item if weight is not specified</p>
                     </div>
                     
                     <div>

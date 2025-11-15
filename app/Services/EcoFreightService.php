@@ -469,7 +469,7 @@ class EcoFreightService
         // If no line items, create a default package
         if (empty($packageDetails)) {
             $itemDescription = implode(', ', $itemDescriptions) ?: 'General Goods';
-            $defaultWeight = $settings->default_weight ?? 1.0;
+            $defaultWeight = $settings->default_weight ?? 0.4;
             $defaultDimensions = $settings->default_dimensions ?? ['length' => 10, 'width' => 10, 'height' => 10];
             
             $packageDetails[] = [

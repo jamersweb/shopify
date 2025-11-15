@@ -34,7 +34,7 @@ return new class extends Migration
             $table->string('ship_from_country')->default('UAE');
             
             // Default Package Rules
-            $table->decimal('default_weight', 8, 2)->default(1.0); // kg
+            $table->decimal('default_weight', 8, 2)->default(0.4); // kg (400g)
             $table->decimal('default_length', 8, 2)->default(30); // cm
             $table->decimal('default_width', 8, 2)->default(20); // cm
             $table->decimal('default_height', 8, 2)->default(10); // cm

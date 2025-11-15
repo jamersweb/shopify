@@ -16,6 +16,11 @@
                     <p class="text-gray-600 mt-1">Manage your Shopify orders and EcoFreight shipments</p>
                 </div>
                 <div class="flex space-x-3">
+                    <button onclick="fetchAllOrders()" 
+                            class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary hover:bg-blue-700">
+                        <i class="fas fa-download mr-2"></i>
+                        Fetch Orders
+                    </button>
                     <button onclick="refreshOrders()" 
                             class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                         <i class="fas fa-sync-alt mr-2"></i>
@@ -244,13 +249,46 @@
     }
     
     function fetchAllOrders() {
-        if (!confirm('Fetch all orders from your connected shops?')) {
+        const button = document.querySelector('button[onclick="fetchAllOrders()"]');
+        const originalHTML = button.innerHTML;
+        
+        // Show loading state
+        button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Fetching...';
+        button.disabled = true;
+        
+        const shops = @json($shops->pluck('id'));
+        
+        if (shops.length === 0) {
+            alert('No shops connected. Please connect a shop first.');
+            button.innerHTML = originalHTML;
+            button.disabled = false;
             return;
         }
         
-        const shops = @json($shops->pluck('id'));
+        if (!confirm(`Fetch orders from ${shops.length} connected shop(s)?`)) {
+            button.innerHTML = originalHTML;
+            button.disabled = false;
+            return;
+        }
+        
         let completed = 0;
         let failed = 0;
+        let totalProcessed = 0;
+        const errors = [];
+        
+        // Show progress notification
+        const notification = document.createElement('div');
+        notification.className = 'fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg bg-blue-50 border border-blue-200';
+        notification.innerHTML = `
+            <div class="flex items-center">
+                <i class="fas fa-spinner fa-spin text-blue-500 text-xl mr-3"></i>
+                <div>
+                    <p class="font-semibold text-blue-800">Fetching Orders</p>
+                    <p class="text-sm text-blue-600">Processing shops... (0/${shops.length})</p>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(notification);
         
         shops.forEach(shopId => {
             fetch(`/dashboard/fetch-orders`, {
@@ -266,23 +304,85 @@
                 completed++;
                 if (!data.success) {
                     failed++;
+                    errors.push(data.message || 'Unknown error');
+                } else {
+                    totalProcessed += data.processed_count || 0;
                 }
                 
+                // Update progress
+                notification.querySelector('.text-sm').textContent = 
+                    `Processing shops... (${completed}/${shops.length})`;
+                
                 if (completed === shops.length) {
+                    // Update notification
                     if (failed > 0) {
-                        alert(`Completed fetching orders. ${failed} shop(s) had errors.`);
+                        notification.className = 'fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg bg-yellow-50 border border-yellow-200';
+                        notification.innerHTML = `
+                            <div class="flex items-center">
+                                <i class="fas fa-exclamation-triangle text-yellow-500 text-xl mr-3"></i>
+                                <div>
+                                    <p class="font-semibold text-yellow-800">Fetch Completed</p>
+                                    <p class="text-sm text-yellow-600">${totalProcessed} new orders processed. ${failed} shop(s) had errors.</p>
+                                </div>
+                            </div>
+                        `;
                     } else {
-                        alert('Successfully fetched orders from all shops!');
+                        notification.className = 'fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg bg-green-50 border border-green-200';
+                        notification.innerHTML = `
+                            <div class="flex items-center">
+                                <i class="fas fa-check-circle text-green-500 text-xl mr-3"></i>
+                                <div>
+                                    <p class="font-semibold text-green-800">Success!</p>
+                                    <p class="text-sm text-green-600">Fetched ${totalProcessed} new order(s) from all shops.</p>
+                                </div>
+                            </div>
+                        `;
                     }
-                    location.reload();
+                    
+                    // Auto-hide and reload
+                    setTimeout(() => {
+                        notification.style.display = 'none';
+                        setTimeout(() => {
+                            notification.remove();
+                            location.reload();
+                        }, 300);
+                    }, 3000);
+                    
+                    button.innerHTML = originalHTML;
+                    button.disabled = false;
                 }
             })
             .catch(error => {
                 completed++;
                 failed++;
+                errors.push(error.message);
+                
+                // Update progress
+                notification.querySelector('.text-sm').textContent = 
+                    `Processing shops... (${completed}/${shops.length})`;
+                
                 if (completed === shops.length) {
-                    alert('Error fetching orders. Please try again.');
-                    location.reload();
+                    notification.className = 'fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg bg-red-50 border border-red-200';
+                    notification.innerHTML = `
+                        <div class="flex items-center">
+                            <i class="fas fa-times-circle text-red-500 text-xl mr-3"></i>
+                            <div>
+                                <p class="font-semibold text-red-800">Error</p>
+                                <p class="text-sm text-red-600">Failed to fetch orders. Please try again.</p>
+                            </div>
+                        </div>
+                    `;
+                    
+                    setTimeout(() => {
+                        notification.style.display = 'none';
+                        setTimeout(() => {
+                            notification.remove();
+                            location.reload();
+                        }, 300);
+                    }, 3000);
+                    
+                    button.innerHTML = originalHTML;
+                    button.disabled = false;
                 }
             });
         });

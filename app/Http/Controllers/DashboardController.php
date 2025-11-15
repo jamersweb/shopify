@@ -91,9 +91,9 @@ class DashboardController extends Controller
             $client = new Client();
             
             // Fetch recent orders from Shopify
-            $response = $client->get("https://{$shop->domain}/admin/api/2024-01/orders.json", [
+            $response = $client->get("https://{$shop->shopify_domain}/admin/api/2024-01/orders.json", [
                 'headers' => [
-                    'X-Shopify-Access-Token' => $shop->access_token,
+                    'X-Shopify-Access-Token' => $shop->shopify_token,
                     'Content-Type' => 'application/json',
                 ],
                 'query' => [
@@ -258,5 +258,29 @@ class DashboardController extends Controller
             'success' => true,
             'message' => 'Shipment queued for EcoFreight. Processing...'
         ]);
+    }
+
+    /**
+     * Map Shopify shipping rate title to service type
+     */
+    protected function mapServiceType(string $rateTitle): string
+    {
+        $rateTitle = strtolower($rateTitle);
+        return str_contains($rateTitle, 'express') ? 'express' : 'standard';
+    }
+
+    /**
+     * Calculate COD amount from order data
+     */
+    protected function calculateCodAmount(array $orderData, $settings): float
+    {
+        if (!$settings->cod_enabled) {
+            return 0;
+        }
+        
+        $orderTotal = floatval($orderData['total_price'] ?? 0);
+        $codFee = floatval($settings->cod_fee ?? 0);
+        
+        return $orderTotal + $codFee;
     }
 }

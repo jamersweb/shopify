@@ -54,7 +54,7 @@ class SettingsController extends Controller
             'email' => 'required|email',
             'address1' => 'required|string',
             'city' => 'required|string',
-            'postcode' => 'required|string',
+            'postcode' => 'nullable|string',
             'country' => 'required|string',
             'default_weight' => 'required|numeric|min:0.1',
             'default_length' => 'required|numeric|min:1',
@@ -75,34 +75,39 @@ class SettingsController extends Controller
                 ->withInput();
         }
 
-        $settingsData = $request->only([
-            'ecofreight_username',
-            'ecofreight_password',
-            'ecofreight_base_url',
-            'company_name',
-            'contact_name',
-            'phone',
-            'email',
-            'address1',
-            'address2',
-            'city',
-            'postcode',
-            'country',
-            'default_weight',
-            'default_length',
-            'default_width',
-            'default_height',
-            'packing_rule',
-            'express_enabled',
-            'standard_enabled',
-            'cod_enabled',
-            'cod_fee',
-            'tracking_poll_interval',
-            'alert_emails',
-        ]);
+        // Map form field names to database column names
+        $settingsData = [
+            'ecofreight_username' => $request->input('ecofreight_username'),
+            'ecofreight_password' => $request->input('ecofreight_password'),
+            'ecofreight_base_url' => $request->input('ecofreight_base_url'),
+            // Ship-From Information mapping
+            'ship_from_company' => $request->input('company_name'),
+            'ship_from_contact' => $request->input('contact_name'),
+            'ship_from_phone' => $request->input('phone'),
+            'ship_from_email' => $request->input('email'),
+            'ship_from_address1' => $request->input('address1'),
+            'ship_from_address2' => $request->input('address2'),
+            'ship_from_city' => $request->input('city'),
+            'ship_from_postcode' => $request->input('postcode'),
+            'ship_from_country' => $request->input('country'),
+            // Default Package Rules
+            'default_weight' => $request->input('default_weight'),
+            'default_length' => $request->input('default_length'),
+            'default_width' => $request->input('default_width'),
+            'default_height' => $request->input('default_height'),
+            'packing_rule' => $request->input('packing_rule'),
+            // Services
+            'use_express_service' => $request->has('express_enabled'),
+            'use_standard_service' => $request->has('standard_enabled'),
+            'cod_enabled' => $request->has('cod_enabled'),
+            'cod_fee' => $request->input('cod_fee'),
+            // Tracking & Notifications
+            'poll_interval_hours' => $request->input('tracking_poll_interval'),
+            'error_alert_emails' => $request->input('alert_emails'),
+        ];
 
-        // Encrypt sensitive data
-        $settingsData['ecofreight_password'] = encrypt($settingsData['ecofreight_password']);
+        // Encrypt sensitive data (password is already encrypted by model accessor, but we need to set it)
+        // The model will handle encryption automatically via the setter
 
         if ($shop->settings) {
             $shop->settings->update($settingsData);

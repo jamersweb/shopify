@@ -81,63 +81,63 @@
                     <div>
                         <label for="company_name" class="block text-sm font-medium text-gray-700">Company Name</label>
                         <input type="text" name="company_name" id="company_name" 
-                               value="{{ old('company_name', $settings->company_name ?? '') }}"
+                               value="{{ old('company_name', $settings->ship_from_company ?? '') }}"
                                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm">
                     </div>
                     
                     <div>
                         <label for="contact_name" class="block text-sm font-medium text-gray-700">Contact Name</label>
                         <input type="text" name="contact_name" id="contact_name" 
-                               value="{{ old('contact_name', $settings->contact_name ?? '') }}"
+                               value="{{ old('contact_name', $settings->ship_from_contact ?? '') }}"
                                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm">
                     </div>
                     
                     <div>
                         <label for="phone" class="block text-sm font-medium text-gray-700">Phone</label>
                         <input type="text" name="phone" id="phone" 
-                               value="{{ old('phone', $settings->phone ?? '') }}"
+                               value="{{ old('phone', $settings->ship_from_phone ?? '') }}"
                                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm">
                     </div>
                     
                     <div>
                         <label for="email" class="block text-sm font-medium text-gray-700">Email</label>
                         <input type="email" name="email" id="email" 
-                               value="{{ old('email', $settings->email ?? '') }}"
+                               value="{{ old('email', $settings->ship_from_email ?? '') }}"
                                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm">
                     </div>
                     
                     <div class="md:col-span-2">
                         <label for="address1" class="block text-sm font-medium text-gray-700">Address Line 1</label>
                         <input type="text" name="address1" id="address1" 
-                               value="{{ old('address1', $settings->address1 ?? '') }}"
+                               value="{{ old('address1', $settings->ship_from_address1 ?? '') }}"
                                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm">
                     </div>
                     
                     <div class="md:col-span-2">
                         <label for="address2" class="block text-sm font-medium text-gray-700">Address Line 2</label>
                         <input type="text" name="address2" id="address2" 
-                               value="{{ old('address2', $settings->address2 ?? '') }}"
+                               value="{{ old('address2', $settings->ship_from_address2 ?? '') }}"
                                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm">
                     </div>
                     
                     <div>
                         <label for="city" class="block text-sm font-medium text-gray-700">City/Emirate</label>
                         <input type="text" name="city" id="city" 
-                               value="{{ old('city', $settings->city ?? '') }}"
+                               value="{{ old('city', $settings->ship_from_city ?? '') }}"
                                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm">
                     </div>
                     
                     <div>
                         <label for="postcode" class="block text-sm font-medium text-gray-700">Postcode</label>
                         <input type="text" name="postcode" id="postcode" 
-                               value="{{ old('postcode', $settings->postcode ?? '') }}"
+                               value="{{ old('postcode', $settings->ship_from_postcode ?? '') }}"
                                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm">
                     </div>
                     
                     <div>
                         <label for="country" class="block text-sm font-medium text-gray-700">Country</label>
                         <input type="text" name="country" id="country" 
-                               value="{{ old('country', $settings->country ?? 'UAE') }}"
+                               value="{{ old('country', $settings->ship_from_country ?? 'United Arab Emirates') }}"
                                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm">
                     </div>
                 </div>
@@ -204,7 +204,7 @@
                 <div class="space-y-4">
                     <div class="flex items-center">
                         <input type="checkbox" name="express_enabled" id="express_enabled" value="1"
-                               {{ old('express_enabled', $settings->express_enabled ?? true) ? 'checked' : '' }}
+                               {{ old('express_enabled', $settings->use_express_service ?? true) ? 'checked' : '' }}
                                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded">
                         <label for="express_enabled" class="ml-2 block text-sm text-gray-900">
                             Enable Express Service
@@ -213,7 +213,7 @@
                     
                     <div class="flex items-center">
                         <input type="checkbox" name="standard_enabled" id="standard_enabled" value="1"
-                               {{ old('standard_enabled', $settings->standard_enabled ?? true) ? 'checked' : '' }}
+                               {{ old('standard_enabled', $settings->use_standard_service ?? true) ? 'checked' : '' }}
                                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded">
                         <label for="standard_enabled" class="ml-2 block text-sm text-gray-900">
                             Enable Standard Service
@@ -252,12 +252,12 @@
                         <label for="tracking_poll_interval" class="block text-sm font-medium text-gray-700">Polling Interval (hours)</label>
                         <select name="tracking_poll_interval" id="tracking_poll_interval" 
                                 class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm">
-                            <option value="1" {{ old('tracking_poll_interval', $settings->tracking_poll_interval ?? '2') === '1' ? 'selected' : '' }}>1 hour</option>
-                            <option value="2" {{ old('tracking_poll_interval', $settings->tracking_poll_interval ?? '2') === '2' ? 'selected' : '' }}>2 hours</option>
-                            <option value="4" {{ old('tracking_poll_interval', $settings->tracking_poll_interval ?? '2') === '4' ? 'selected' : '' }}>4 hours</option>
-                            <option value="6" {{ old('tracking_poll_interval', $settings->tracking_poll_interval ?? '2') === '6' ? 'selected' : '' }}>6 hours</option>
-                            <option value="12" {{ old('tracking_poll_interval', $settings->tracking_poll_interval ?? '2') === '12' ? 'selected' : '' }}>12 hours</option>
-                            <option value="24" {{ old('tracking_poll_interval', $settings->tracking_poll_interval ?? '2') === '24' ? 'selected' : '' }}>24 hours</option>
+                            <option value="1" {{ old('tracking_poll_interval', $settings->poll_interval_hours ?? '2') == '1' ? 'selected' : '' }}>1 hour</option>
+                            <option value="2" {{ old('tracking_poll_interval', $settings->poll_interval_hours ?? '2') == '2' ? 'selected' : '' }}>2 hours</option>
+                            <option value="4" {{ old('tracking_poll_interval', $settings->poll_interval_hours ?? '2') == '4' ? 'selected' : '' }}>4 hours</option>
+                            <option value="6" {{ old('tracking_poll_interval', $settings->poll_interval_hours ?? '2') == '6' ? 'selected' : '' }}>6 hours</option>
+                            <option value="12" {{ old('tracking_poll_interval', $settings->poll_interval_hours ?? '2') == '12' ? 'selected' : '' }}>12 hours</option>
+                            <option value="24" {{ old('tracking_poll_interval', $settings->poll_interval_hours ?? '2') == '24' ? 'selected' : '' }}>24 hours</option>
                         </select>
                     </div>
                     
@@ -265,7 +265,7 @@
                         <label for="alert_emails" class="block text-sm font-medium text-gray-700">Alert Emails</label>
                         <input type="text" name="alert_emails" id="alert_emails" 
                                placeholder="admin@example.com, support@example.com"
-                               value="{{ old('alert_emails', $settings->alert_emails ?? '') }}"
+                               value="{{ old('alert_emails', $settings->error_alert_emails ?? '') }}"
                                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary sm:text-sm">
                         <p class="mt-1 text-sm text-gray-500">Comma-separated email addresses</p>
                     </div>

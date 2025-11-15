@@ -115,8 +115,8 @@ class EcoFreightService
     public function createShipment(array $shipmentData): array
     {
         try {
-            // Get bearer token
-            $bearerToken = $this->settings->ecofreight_bearer_token;
+            // Get bearer token - try shop settings first, then fallback to production token from config
+            $bearerToken = $this->settings->ecofreight_bearer_token ?? config('ecofreight.production_token');
             
             if (!$bearerToken) {
                 Log::error('EcoFreight bearer token not found, attempting to retrieve');
@@ -126,11 +126,11 @@ class EcoFreightService
                 if (!$connectionResult['success']) {
                     return [
                         'success' => false,
-                        'message' => 'Bearer token not available. Please test connection first.',
+                        'message' => 'Bearer token not available. Please test connection first or set production token.',
                         'data' => null,
                     ];
                 }
-                $bearerToken = $this->settings->ecofreight_bearer_token;
+                $bearerToken = $this->settings->ecofreight_bearer_token ?? config('ecofreight.production_token');
             }
             
             // Ensure shipmentData is wrapped in an array (API expects array of orders)

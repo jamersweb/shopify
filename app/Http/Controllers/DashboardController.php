@@ -115,15 +115,22 @@ class DashboardController extends Controller
                 
                 if (!$existingShipment && $order['financial_status'] === 'paid') {
                     // Create shipment record
-                    Shipment::create([
+                    $shipment = Shipment::create([
                         'shop_id' => $shop->id,
                         'shopify_order_id' => $order['id'],
                         'shopify_order_name' => $order['name'],
                         'status' => 'pending',
                         'shipment_data' => $order,
-                        'cod_enabled' => false,
-                        'cod_amount' => 0,
+                        'service_type' => $this->mapServiceType($order['shipping_lines'][0]['title'] ?? 'standard'),
+                        'cod_enabled' => $shop->settings->cod_enabled ?? false,
+                        'cod_amount' => $this->calculateCodAmount($order, $shop->settings),
                     ]);
+                    
+                    // Automatically queue shipment creation job
+                    // Note: Queue worker must be running for jobs to process
+                    // Run: php artisan queue:work
+                    \App\Jobs\CreateShipmentJob::dispatch($shop->id, $shipment->id, uniqid('fetch_', true));
+                    
                     $processedCount++;
                 }
             }
@@ -155,7 +162,33 @@ class DashboardController extends Controller
             ->whereIn('shop_id', $shops)
             ->findOrFail($id);
         
-        return view('dashboard.shipment-details', compact('shipment'));
+        // If shipment_data doesn't have order data, fetch it from Shopify
+        $orderData = $shipment->shipment_data;
+        if (!$orderData || !isset($orderData['customer']) || !isset($orderData['line_items'])) {
+            try {
+                $client = new Client();
+                $response = $client->get("https://{$shipment->shop->shopify_domain}/admin/api/2024-01/orders/{$shipment->shopify_order_id}.json", [
+                    'headers' => [
+                        'X-Shopify-Access-Token' => $shipment->shop->shopify_token,
+                    ],
+                ]);
+                
+                $data = json_decode($response->getBody(), true);
+                $orderData = $data['order'] ?? $orderData;
+                
+                // Update shipment_data with full order data
+                if ($orderData) {
+                    $shipment->update(['shipment_data' => $orderData]);
+                }
+            } catch (\Exception $e) {
+                \Log::error('Failed to fetch order data for shipment details', [
+                    'shipment_id' => $shipment->id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+        
+        return view('dashboard.shipment-details', compact('shipment', 'orderData'));
     }
 
     /**

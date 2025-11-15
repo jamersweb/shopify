@@ -14,6 +14,17 @@ return [
     'base_url' => env('ECOFREIGHT_BASE_URL', 'https://app.ecofreight.ae'),
     'sandbox_username' => env('ECOFREIGHT_SANDBOX_USERNAME', 'apitesting'),
     'sandbox_password' => env('ECOFREIGHT_SANDBOX_PASSWORD', 'apitesting'),
+    
+    /*
+    |--------------------------------------------------------------------------
+    | Production Bearer Token
+    |--------------------------------------------------------------------------
+    |
+    | Production JWT token for EcoFreight API. This can be used as a fallback
+    | if shop-specific tokens are not available.
+    |
+    */
+    'production_token' => env('ECOFREIGHT_PRODUCTION_TOKEN', null),
 
     /*
     |--------------------------------------------------------------------------

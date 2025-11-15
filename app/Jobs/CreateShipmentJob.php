@@ -75,6 +75,11 @@ class CreateShipmentJob implements ShouldQueue
                 ]);
                 return;
             }
+            
+            // Preserve original order data in shipment_data if not already set
+            if (!$shipment->shipment_data || !isset($shipment->shipment_data['customer'])) {
+                $shipment->update(['shipment_data' => $orderData]);
+            }
 
             // Build shipment payload
             $ecofreightService = new EcoFreightService($shop->settings);
@@ -149,11 +154,19 @@ class CreateShipmentJob implements ShouldQueue
                 $trackingUrl = $shipmentData['tracking_url'] ?? null;
             }
             
+            // Preserve original order data and merge with EcoFreight response
+            $originalOrderData = $shipment->shipment_data ?? $orderData;
+            $updatedShipmentData = array_merge($originalOrderData, [
+                'ecofreight_response' => $shipmentData,
+                'ecofreight_awb' => $awb,
+                'ecofreight_reference' => $reference,
+            ]);
+            
             $shipment->update([
                 'ecofreight_awb' => $awb,
                 'ecofreight_reference' => $reference,
                 'status' => 'created',
-                'shipment_data' => $shipmentData,
+                'shipment_data' => $updatedShipmentData,
                 'tracking_url' => $trackingUrl,
             ]);
 

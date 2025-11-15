@@ -105,29 +105,53 @@
                     Customer Information
                 </h3>
                 
+                @php
+                    $orderData = $orderData ?? $shipment->shipment_data;
+                    $shippingAddress = $orderData['shipping_address'] ?? null;
+                    $customer = $orderData['customer'] ?? null;
+                @endphp
+                
                 <dl class="grid grid-cols-1 gap-x-4 gap-y-6">
                     <div>
                         <dt class="text-sm font-medium text-gray-500">Name</dt>
-                        <dd class="mt-1 text-sm text-gray-900">{{ $shipment->customer_name ?? 'N/A' }}</dd>
+                        <dd class="mt-1 text-sm text-gray-900">
+                            @if($shippingAddress)
+                                {{ $shippingAddress['name'] ?? ($shippingAddress['first_name'] ?? '') . ' ' . ($shippingAddress['last_name'] ?? '') }}
+                            @elseif($customer)
+                                {{ $customer['first_name'] ?? '' }} {{ $customer['last_name'] ?? '' }}
+                            @else
+                                N/A
+                            @endif
+                        </dd>
                     </div>
                     
                     <div>
                         <dt class="text-sm font-medium text-gray-500">Phone</dt>
-                        <dd class="mt-1 text-sm text-gray-900">{{ $shipment->customer_phone ?? 'N/A' }}</dd>
+                        <dd class="mt-1 text-sm text-gray-900">
+                            {{ $shippingAddress['phone'] ?? $customer['phone'] ?? 'N/A' }}
+                        </dd>
                     </div>
                     
                     <div>
                         <dt class="text-sm font-medium text-gray-500">Email</dt>
-                        <dd class="mt-1 text-sm text-gray-900">{{ $shipment->customer_email ?? 'N/A' }}</dd>
+                        <dd class="mt-1 text-sm text-gray-900">
+                            {{ $shippingAddress['email'] ?? $customer['email'] ?? $orderData['email'] ?? 'N/A' }}
+                        </dd>
                     </div>
                     
                     <div>
                         <dt class="text-sm font-medium text-gray-500">Address</dt>
                         <dd class="mt-1 text-sm text-gray-900">
-                            @if($shipment->customer_address)
-                                {{ $shipment->customer_address }}<br>
-                                {{ $shipment->customer_city }}, {{ $shipment->customer_postcode }}<br>
-                                {{ $shipment->customer_country }}
+                            @if($shippingAddress)
+                                {{ $shippingAddress['address1'] ?? '' }}
+                                @if(!empty($shippingAddress['address2']))
+                                    <br>{{ $shippingAddress['address2'] }}
+                                @endif
+                                <br>{{ $shippingAddress['city'] ?? '' }}, {{ $shippingAddress['province'] ?? '' }}
+                                @if(!empty($shippingAddress['zip']))
+                                    <br>{{ $shippingAddress['zip'] }}
+                                @endif
+                                <br>{{ $shippingAddress['country'] ?? '' }}
                             @else
                                 N/A
                             @endif
@@ -146,17 +170,27 @@
                 Package Information
             </h3>
             
+            @php
+                $orderData = $orderData ?? $shipment->shipment_data;
+                $lineItems = $orderData['line_items'] ?? [];
+                
+                // Calculate total weight and dimensions
+                $totalWeight = 0;
+                $totalQuantity = 0;
+                foreach ($lineItems as $item) {
+                    $weight = ($item['grams'] ?? 0) / 1000; // Convert to kg
+                    $quantity = $item['quantity'] ?? 1;
+                    $totalWeight += $weight * $quantity;
+                    $totalQuantity += $quantity;
+                }
+            @endphp
+            
             <dl class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-3">
                 <div>
                     <dt class="text-sm font-medium text-gray-500">Weight</dt>
-                    <dd class="mt-1 text-sm text-gray-900">{{ $shipment->weight ?? 'N/A' }} kg</dd>
-                </div>
-                
-                <div>
-                    <dt class="text-sm font-medium text-gray-500">Dimensions</dt>
                     <dd class="mt-1 text-sm text-gray-900">
-                        @if($shipment->length && $shipment->width && $shipment->height)
-                            {{ $shipment->length }} × {{ $shipment->width }} × {{ $shipment->height }} cm
+                        @if($totalWeight > 0)
+                            {{ number_format($totalWeight, 2) }} kg
                         @else
                             N/A
                         @endif
@@ -164,9 +198,16 @@
                 </div>
                 
                 <div>
+                    <dt class="text-sm font-medium text-gray-500">Items</dt>
+                    <dd class="mt-1 text-sm text-gray-900">
+                        {{ $totalQuantity }} item(s)
+                    </dd>
+                </div>
+                
+                <div>
                     <dt class="text-sm font-medium text-gray-500">COD Amount</dt>
                     <dd class="mt-1 text-sm text-gray-900">
-                        @if($shipment->cod_amount)
+                        @if($shipment->cod_enabled && $shipment->cod_amount)
                             AED {{ number_format($shipment->cod_amount, 2) }}
                         @else
                             No COD
@@ -174,6 +215,45 @@
                     </dd>
                 </div>
             </dl>
+            
+            <!-- Product Details -->
+            @if(!empty($lineItems))
+            <div class="mt-6">
+                <h4 class="text-sm font-medium text-gray-900 mb-3">Products</h4>
+                <div class="overflow-hidden">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
+                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Weight</th>
+                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Price</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            @foreach($lineItems as $item)
+                            <tr>
+                                <td class="px-4 py-3 text-sm text-gray-900">{{ $item['title'] ?? 'N/A' }}</td>
+                                <td class="px-4 py-3 text-sm text-gray-500">{{ $item['sku'] ?? 'N/A' }}</td>
+                                <td class="px-4 py-3 text-sm text-gray-900 text-right">{{ $item['quantity'] ?? 1 }}</td>
+                                <td class="px-4 py-3 text-sm text-gray-500 text-right">
+                                    @if(isset($item['grams']))
+                                        {{ number_format($item['grams'] / 1000, 2) }} kg
+                                    @else
+                                        N/A
+                                    @endif
+                                </td>
+                                <td class="px-4 py-3 text-sm text-gray-900 text-right">
+                                    {{ $orderData['currency'] ?? 'AED' }} {{ number_format($item['price'] ?? 0, 2) }}
+                                </td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            @endif
         </div>
     </div>
 

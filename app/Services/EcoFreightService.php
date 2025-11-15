@@ -668,7 +668,7 @@ class EcoFreightService
     /**
      * Redact sensitive data from logs.
      */
-    protected function redactSensitiveData(array $data): array
+    public function redactSensitiveData(array $data): array
     {
         // Handle array of orders
         if (isset($data[0]) && is_array($data[0])) {

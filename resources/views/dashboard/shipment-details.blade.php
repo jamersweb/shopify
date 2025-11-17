@@ -627,10 +627,12 @@
                 document.body.appendChild(notification);
                 
                 closeEditModal();
+                // Force reload to show updated data
                 setTimeout(() => {
                     notification.remove();
-                    location.reload();
-                }, 2000);
+                    // Use location.reload(true) to force reload from server (bypass cache)
+                    location.reload(true);
+                }, 1500);
             } else {
                 alert('Error: ' + data.message);
                 submitButton.innerHTML = originalHTML;

@@ -167,9 +167,15 @@ class DashboardController extends Controller
             ->whereIn('shop_id', $shops)
             ->findOrFail($id);
         
-        // If shipment_data doesn't have order data, fetch it from Shopify
+        // Refresh shipment to get latest data (including any edits)
+        $shipment->refresh();
+        
+        // Use shipment_data from database (may contain user edits)
         $orderData = $shipment->shipment_data;
-        if (!$orderData || !isset($orderData['customer']) || !isset($orderData['line_items'])) {
+        
+        // Only fetch from Shopify if shipment_data is completely empty or null
+        // Always preserve shipment_data if it exists to keep user edits
+        if (empty($orderData) || !is_array($orderData) || (count($orderData) === 0)) {
             try {
                 $client = new Client();
                 $response = $client->get("https://{$shipment->shop->shopify_domain}/admin/api/2024-01/orders/{$shipment->shopify_order_id}.json", [
@@ -179,11 +185,34 @@ class DashboardController extends Controller
                 ]);
                 
                 $data = json_decode($response->getBody(), true);
-                $orderData = $data['order'] ?? $orderData;
+                $fetchedOrderData = $data['order'] ?? null;
                 
-                // Update shipment_data with full order data
-                if ($orderData) {
-                    $shipment->update(['shipment_data' => $orderData]);
+                // Merge fetched data with existing shipment_data to preserve any edits
+                if ($fetchedOrderData) {
+                    if ($orderData && is_array($orderData) && !empty($orderData)) {
+                        // Preserve edited fields from existing shipment_data
+                        $preservedLineItems = isset($orderData['line_items']) && is_array($orderData['line_items']) && count($orderData['line_items']) > 0 
+                            ? $orderData['line_items'] 
+                            : ($fetchedOrderData['line_items'] ?? []);
+                        
+                        $preservedShippingAddress = isset($orderData['shipping_address']) && is_array($orderData['shipping_address']) && !empty($orderData['shipping_address'])
+                            ? $orderData['shipping_address']
+                            : ($fetchedOrderData['shipping_address'] ?? []);
+                        
+                        // Merge: use fetched data as base, but preserve edited fields
+                        $orderData = array_merge($fetchedOrderData, $orderData);
+                        // Override with preserved edited fields
+                        $orderData['line_items'] = $preservedLineItems;
+                        $orderData['shipping_address'] = $preservedShippingAddress;
+                    } else {
+                        $orderData = $fetchedOrderData;
+                    }
+                    
+                    // Update shipment_data with merged data (only if we fetched new data)
+                    // Don't overwrite if shipment_data already exists with edits
+                    if (empty($shipment->shipment_data) || !isset($shipment->shipment_data['line_items'])) {
+                        $shipment->update(['shipment_data' => $orderData]);
+                    }
                 }
             } catch (\Exception $e) {
                 \Log::error('Failed to fetch order data for shipment details', [

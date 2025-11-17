@@ -219,6 +219,17 @@ class EcoFreightService
             // Ensure shipmentData is wrapped in an array (API expects array of orders)
             $payload = is_array($shipmentData) && isset($shipmentData[0]) ? $shipmentData : [$shipmentData];
             
+            // Service type is already set correctly in buildShipmentPayload based on country
+            // No need to force override here - the payload already has the correct service_type
+            
+            // Log the payload service types before sending
+            Log::info('EcoFreight createShipment - Payload service types', [
+                'payload_count' => count($payload),
+                'service_types' => array_map(function($order) {
+                    return $order['service_type'] ?? 'NOT SET';
+                }, $payload),
+            ]);
+            
             // Format Authorization header - add Bearer prefix if not present
             $authHeader = $bearerToken;
             // If token doesn't start with "Bearer ", add it
@@ -503,6 +514,21 @@ class EcoFreightService
 
         // Determine service type from shipping rate title (fallback to normal_delivery if not found)
         $serviceType = $this->mapServiceType($orderData['shipping_lines'][0]['title'] ?? 'Standard');
+        
+        // Get normalized consignee country to determine service type
+        $consigneeCountry = $this->normalizeCountryName($shipTo['country'] ?? 'United Arab Emirates');
+        $isUAE = strtoupper($consigneeCountry) === 'UNITED ARAB EMIRATES';
+        
+        // Determine final service type based on country
+        // UAE: use normal_delivery or express_delivery
+        // Other countries: use Outbound
+        if ($isUAE) {
+            // Convert mapped service type to API format
+            $finalServiceType = strtolower($serviceType) === 'express' ? 'express_delivery' : 'normal_delivery';
+        } else {
+            // For non-UAE countries, use Outbound
+            $finalServiceType = 'Outbound';
+        }
 
         // Build package details with item details
         $packageDetails = [];
@@ -652,7 +678,7 @@ class EcoFreightService
         // Build EcoFreight v2 API payload with new structure
         $payload = [
             'order_reference' => $orderData['name'] ?? (string)($orderData['order_number'] ?? ''),
-            'service_type' => 'Outbound',
+            'service_type' => $finalServiceType, // UAE: normal_delivery/express_delivery, Other: Outbound
             'product_type' => 'non_document',
             'customer_service_type' => 'B2C', // Default to B2C, can be configured in settings if needed
             'schedule_delivery_date' => '',
@@ -716,9 +742,15 @@ class EcoFreightService
         $shipperCountry = $payload['shipper_details']['country'] ?? '';
         $consigneeCountry = $payload['consignee_details']['country'] ?? '';
         
-        Log::info('EcoFreight buildShipmentPayload - Country names', [
+        // Log service type to verify it's being set correctly
+        Log::info('EcoFreight buildShipmentPayload - Service type and country names', [
+            'service_type' => $payload['service_type'] ?? 'NOT SET',
+            'service_type_length' => strlen($payload['service_type'] ?? ''),
             'shipper_country' => $shipperCountry,
             'consignee_country' => $consigneeCountry,
+            'is_uae' => $isUAE,
+            'mapped_service_type' => $serviceType,
+            'final_service_type' => $finalServiceType,
         ]);
         
         // Validate payload before returning
